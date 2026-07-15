@@ -1,0 +1,166 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1" />
+  <title>Phase 1 - C++98 Basics</title>
+  <style>
+    :root {
+      --bg: #f7f5f2;
+      --ink: #1f1f1f;
+      --muted: #5a5a5a;
+      --accent: #1d4ed8;
+      --card: #ffffff;
+      --border: #e6e0d8;
+    }
+    body {
+      margin: 0;
+      font-family: Georgia, "Times New Roman", Times, serif;
+      color: var(--ink);
+      background: linear-gradient(180deg, #f7f5f2 0%, #f2efe9 100%);
+    }
+    .wrap {
+      max-width: 900px;
+      margin: 40px auto;
+      padding: 0 20px 60px;
+    }
+    h1 {
+      font-size: 32px;
+      margin: 0 0 8px 0;
+      letter-spacing: 0.3px;
+    }
+    .subtitle {
+      color: var(--muted);
+      margin-bottom: 24px;
+    }
+    .card {
+      background: var(--card);
+      border: 1px solid var(--border);
+      border-radius: 12px;
+      padding: 20px;
+      margin: 16px 0;
+      box-shadow: 0 6px 20px rgba(0,0,0,0.04);
+    }
+    h2 {
+      font-size: 20px;
+      margin: 0 0 12px 0;
+    }
+    ul {
+      margin: 0;
+      padding-left: 20px;
+    }
+    li {
+      margin: 6px 0;
+    }
+    .day {
+      border-left: 4px solid var(--accent);
+      padding-left: 14px;
+      margin-bottom: 14px;
+    }
+    .label {
+      font-weight: bold;
+    }
+    .small {
+      color: var(--muted);
+      font-size: 14px;
+    }
+  </style>
+</head>
+<body>
+  <div class="wrap">
+    <h1>Phase 1 - C++98 Basics</h1>
+    <div class="subtitle">10 days · 4h/day</div>
+
+    <div class="card">
+      <h2>Goal</h2>
+      <ul>
+        <li>tfhem C++ basics li ghadi t7tajhom f ft_irc: classes, constructors/destructors, pointers/references, RAII.</li>
+        <li>t7taj STL basics: string, vector, map.</li>
+        <li>t9dar tdir Makefile s7i7.</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Daily rhythm (4h)</h2>
+      <ul>
+        <li>2h learn + notes</li>
+        <li>2h practice (exercises)</li>
+      </ul>
+    </div>
+
+    <div class="card">
+      <h2>Day by day</h2>
+
+      <div class="day">
+        <div class="label">Day 1: C++ basics</div>
+        <div>Learn: syntax, types, functions, std::string.</div>
+        <div>Exercise: program y9ra line men stdin, ydir split 3la space, ytb3 lkalimat.</div>
+      </div>
+
+      <div class="day">
+        <div class="label">Day 2: Pointers & References</div>
+        <div>Learn: pointer vs reference, new/delete.</div>
+        <div>Exercise: implement swap(int&amp;, int&amp;) w swap(int*, int*), w jarrabhom.</div>
+      </div>
+
+      <div class="day">
+        <div class="label">Day 3: Classes intro</div>
+        <div>Learn: class/struct, public/private, methods.</div>
+        <div>Exercise: class User fih nickname, username, get/set, w print().</div>
+      </div>
+
+      <div class="day">
+        <div class="label">Day 4: Constructors/Destructors</div>
+        <div>Learn: default/param constructors, destructor.</div>
+        <div>Exercise: class Buffer fih char* dynamic, constructor kaykhdam size, destructor kay7errr memory.</div>
+      </div>
+
+      <div class="day">
+        <div class="label">Day 5: Rule of Three</div>
+        <div>Learn: copy constructor, assignment operator.</div>
+        <div>Exercise: kammel class Buffer b copy ctor + operator= bach matw93ch double free.</div>
+      </div>
+
+      <div class="day">
+        <div class="label">Day 6: Const correctness</div>
+        <div>Learn: const methods, const refs.</div>
+        <div>Exercise: class Message fih std::string text w method size() const.</div>
+      </div>
+
+      <div class="day">
+        <div class="label">Day 7: STL Vector</div>
+        <div>Learn: std::vector, iteration.</div>
+        <div>Exercise: qra kalimat, khznhom f vector, w tba3 atwal kalma.</div>
+      </div>
+
+      <div class="day">
+        <div class="label">Day 8: STL Map</div>
+        <div>Learn: std::map, key/value.</div>
+        <div>Exercise: word count: qra text w tba3 ch7al men marrat tkararat kol kalma.</div>
+      </div>
+
+      <div class="day">
+        <div class="label">Day 9: File I/O basics</div>
+        <div>Learn: ifstream, ofstream.</div>
+        <div>Exercise: program ya5od file, y7seb 3dad dyal lines w words.</div>
+      </div>
+
+      <div class="day">
+        <div class="label">Day 10: Makefile</div>
+        <div>Learn: NAME, all, clean, fclean, re.</div>
+        <div>Exercise: Makefile ycompile project sghir men 2 files .cpp.</div>
+      </div>
+    </div>
+
+    <div class="card">
+      <h2>Extra optional (ila 3ndk wa9t)</h2>
+      <ul>
+        <li>StringUtils: toLower, trim.</li>
+        <li>Logger class b static log().</li>
+        <li>Parse line to command + args (tamhid lIRC).</li>
+      </ul>
+      <div class="small">Note: text kept in Darija for clarity.</div>
+    </div>
+  </div>
+</body>
+</html>
