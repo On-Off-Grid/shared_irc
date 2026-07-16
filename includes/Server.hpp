@@ -1,24 +1,39 @@
+/* ************************************************************************** */
+/*                                                                            */
+/*   Server.hpp                                                               */
+/*                                                                            */
+/*   Phase 1: Project Skeleton                                                */
+/*   Class declaration for the IRC Server                                     */
+/*                                                                            */
+/* ************************************************************************** */
+
 #ifndef SERVER_HPP
-#define SERVER_HPP
+# define SERVER_HPP
 
-#include <string>
+# include <string>
+# include <iostream>
 
-class Server {
-private:
-    int         _server_fd;
-    int         _port;
-    std::string _password;
+class Server
+{
+	public:
+		/* --- Orthodox Canonical Form --- */
+		Server(int port, const std::string& password);
+		~Server();
 
-    // Orthodox Canonical Form: Prevent copying
-    Server(const Server& other);
-    Server& operator=(const Server& other);
+		/* --- Core Methods --- */
+		void	init();
+		void	run();
 
-public:
-    Server(int port, const std::string& password);
-    ~Server();
+	private:
+		/* --- Orthodox Canonical Form (disabled) --- */
+		Server();
+		Server(const Server& other);
+		Server& operator=(const Server& other);
 
-    void init();
-    void run();
+		/* --- Attributes --- */
+		int			_port;
+		std::string	_password;
+		int			_serverFd;
 };
 
 #endif
