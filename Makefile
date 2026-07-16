@@ -1,20 +1,47 @@
-NAME = ircserv
-CXX = c++
-CXXFLAGS = -Wall -Wextra -Werror -std=c++98 -Iincludes
+# **************************************************************************** #
+#                                                                              #
+#    ft_irc - Phase 1: Project Skeleton                                        #
+#                                                                              #
+#    Makefile for building the ircserv executable                               #
+#                                                                              #
+# **************************************************************************** #
 
-SRCS = main.cpp src/Server.cpp
-OBJS = $(SRCS:.cpp=.o)
+NAME		= ircserv
+
+CXX			= c++
+CXXFLAGS	= -Wall -Wextra -Werror -std=c++98
+
+INCLUDES	= -Iincludes
+
+SRC_DIR		= src
+OBJ_DIR		= obj
+
+SRCS		= src/main.cpp \
+			  src/Server.cpp
+
+OBJS		= $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
+
+# **************************************************************************** #
+#                              RULES                                           #
+# **************************************************************************** #
 
 all: $(NAME)
 
 $(NAME): $(OBJS)
 	$(CXX) $(CXXFLAGS) $(OBJS) -o $(NAME)
+	@echo "✅ $(NAME) compiled successfully."
+
+$(OBJ_DIR)/%.o: $(SRC_DIR)/%.cpp
+	@mkdir -p $(OBJ_DIR)
+	$(CXX) $(CXXFLAGS) $(INCLUDES) -c $< -o $@
 
 clean:
-	rm -f $(OBJS) src/Server.o
+	rm -rf $(OBJ_DIR)
+	@echo "🧹 Object files removed."
 
 fclean: clean
 	rm -f $(NAME)
+	@echo "🗑️  $(NAME) removed."
 
 re: fclean all
 
