@@ -2,7 +2,7 @@
 /*                                                                            */
 /*   Server.hpp                                                               */
 /*                                                                            */
-/*   Phase 1: Project Skeleton                                                */
+/*   Phase 2: Sockets & Connections                                           */
 /*   Class declaration for the IRC Server                                     */
 /*                                                                            */
 /* ************************************************************************** */
@@ -12,6 +12,14 @@
 
 # include <string>
 # include <iostream>
+# include <cstring>
+# include <cerrno>
+# include <cstdlib>
+# include <stdexcept>
+# include <sys/socket.h>
+# include <netinet/in.h>
+# include <fcntl.h>
+# include <unistd.h>
 
 class Server
 {
@@ -29,6 +37,13 @@ class Server
 		Server();
 		Server(const Server& other);
 		Server& operator=(const Server& other);
+
+		/* --- Private Helpers (Phase 2: Networking) --- */
+		void	_createSocket();
+		void	_configureSocket();
+		void	_setNonBlocking();
+		void	_bindSocket();
+		void	_startListening();
 
 		/* --- Attributes --- */
 		int			_port;
