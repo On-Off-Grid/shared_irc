@@ -2,8 +2,8 @@
 /*                                                                            */
 /*   Server.cpp                                                               */
 /*                                                                            */
-/*   Phase 1: Project Skeleton                                                */
-/*   Implementation of the Server class                                       */
+/*   Phase 2: Sockets & Connections                                           */
+/*   Implementation of the Server class — networking initialization           */
 /*                                                                            */
 /* ************************************************************************** */
 
@@ -22,6 +22,11 @@ Server::Server(int port, const std::string& password)
 
 Server::~Server()
 {
+	if (_serverFd != -1)
+	{
+		close(_serverFd);
+		std::cout << "Server socket closed (fd " << _serverFd << ")." << std::endl;
+	}
 	std::cout << "Server object destroyed." << std::endl;
 }
 
@@ -32,11 +37,122 @@ Server::~Server()
 void	Server::init()
 {
 	std::cout << "Initializing server..." << std::endl;
-	// Phase 2: socket(), bind(), listen() will be implemented here.
+	_createSocket();
+	_configureSocket();
+	_setNonBlocking();
+	_bindSocket();
+	_startListening();
+	std::cout << "Server ready." << std::endl;
 }
 
 void	Server::run()
 {
-	std::cout << "Running server..." << std::endl;
-	// Phase 2: poll() loop and event handling will be implemented here.
+	std::cout << "Server is waiting... (press Ctrl+C to stop)" << std::endl;
+	/* Phase 2 ends after listen(). No poll(), no accept(), no recv().       */
+	/* We simply pause to keep the process alive so the socket stays open.   */
+	while (true)
+		pause();
+}
+
+/* ************************************************************************** */
+/*                          PRIVATE HELPERS                                   */
+/* ************************************************************************** */
+
+/**
+ * Step 1: Create a TCP socket using socket().
+ * AF_INET    — IPv4
+ * SOCK_STREAM — TCP (reliable, ordered, connection-oriented)
+ * 0          — let the OS pick the protocol (TCP for SOCK_STREAM)
+ */
+void	Server::_createSocket()
+{
+	std::cout << "Creating socket..." << std::endl;
+	_serverFd = socket(AF_INET, SOCK_STREAM, 0);
+	if (_serverFd == -1)
+		throw std::runtime_error(std::string("socket() failed: ") + strerror(errno));
+	std::cout << "Socket created (fd " << _serverFd << ")." << std::endl;
+}
+
+/**
+ * Step 2: Set SO_REUSEADDR so we can immediately re-bind after a restart.
+ * Without this, bind() would fail with "Address already in use" for a while
+ * after the server exits, because the port stays in TIME_WAIT state.
+ */
+void	Server::_configureSocket()
+{
+	std::cout << "Setting SO_REUSEADDR..." << std::endl;
+	int optval = 1;
+	if (setsockopt(_serverFd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1)
+	{
+		close(_serverFd);
+		_serverFd = -1;
+		throw std::runtime_error(std::string("setsockopt() failed: ") + strerror(errno));
+	}
+	std::cout << "Socket configured." << std::endl;
+}
+
+/**
+ * Step 3: Enable non-blocking mode with fcntl().
+ * This is required so that later phases can use poll() without blocking.
+ * We first GET the current flags, then SET O_NONBLOCK on top.
+ */
+void	Server::_setNonBlocking()
+{
+	std::cout << "Enabling non-blocking mode..." << std::endl;
+	int flags = fcntl(_serverFd, F_GETFL, 0);
+	if (flags == -1)
+	{
+		close(_serverFd);
+		_serverFd = -1;
+		throw std::runtime_error(std::string("fcntl(F_GETFL) failed: ") + strerror(errno));
+	}
+	if (fcntl(_serverFd, F_SETFL, flags | O_NONBLOCK) == -1)
+	{
+		close(_serverFd);
+		_serverFd = -1;
+		throw std::runtime_error(std::string("fcntl(F_SETFL) failed: ") + strerror(errno));
+	}
+	std::cout << "Socket set to non-blocking." << std::endl;
+}
+
+/**
+ * Step 4 & 5: Prepare a sockaddr_in and bind the socket to the port.
+ * AF_INET      — IPv4
+ * INADDR_ANY   — accept connections on any network interface
+ * htons(_port) — convert port to network byte order
+ */
+void	Server::_bindSocket()
+{
+	std::cout << "Binding to port " << _port << "..." << std::endl;
+
+	struct sockaddr_in addr;
+	std::memset(&addr, 0, sizeof(addr));
+	addr.sin_family      = AF_INET;
+	addr.sin_addr.s_addr = INADDR_ANY;
+	addr.sin_port        = htons(_port);
+
+	if (bind(_serverFd, (struct sockaddr *)&addr, sizeof(addr)) == -1)
+	{
+		close(_serverFd);
+		_serverFd = -1;
+		throw std::runtime_error(std::string("bind() failed: ") + strerror(errno));
+	}
+	std::cout << "Bound successfully." << std::endl;
+}
+
+/**
+ * Step 6: Start listening for incoming connections.
+ * The backlog (10) is the maximum number of pending connections queued
+ * by the kernel before they are accepted. This is a reasonable default.
+ */
+void	Server::_startListening()
+{
+	std::cout << "Listening..." << std::endl;
+	if (listen(_serverFd, 10) == -1)
+	{
+		close(_serverFd);
+		_serverFd = -1;
+		throw std::runtime_error(std::string("listen() failed: ") + strerror(errno));
+	}
+	std::cout << "Server listening on port " << _port << std::endl;
 }
