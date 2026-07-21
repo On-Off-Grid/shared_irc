@@ -50,7 +50,7 @@ bm.remove_client(fd);
 
 ### Key Guarantees
 - **TCP Fragmentation safe**: Incomplete chunks remain in internal buffer across event loops until `\r\n` is received.
-- **Overflow Protection**: Automatically truncates lines exceeding `512` bytes to prevent memory buffer overflow attacks.
+- **Overflow Protection**: Automatically truncates lines exceeding `512` bytes (including CRLF, i.e. 510 bytes of content) to prevent DoS via unbounded buffering.
 - **Standalone**: Does not depend on `Client` or `Server` classes.
 
 ---
