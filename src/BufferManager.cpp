@@ -1,6 +1,6 @@
 #include "BufferManager.hpp"
 
-BufferManager::BufferManager(void) : _max_line_length(512)
+BufferManager::BufferManager(void) : _max_line_length(510)
 {
 }
 
