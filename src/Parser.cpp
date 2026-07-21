@@ -26,7 +26,7 @@ static std::string to_upper_ascii(const std::string &input)
     std::string out = input;
     for (size_t i = 0; i < out.size(); ++i)
     {
-        out[i] = static_cast<char>(std::toupper(out[i]));
+        out[i] = static_cast<char>(std::toupper(static_cast<unsigned char>(out[i])));
     }
     return (out);
 }
