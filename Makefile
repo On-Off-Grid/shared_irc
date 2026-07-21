@@ -1,6 +1,6 @@
 # **************************************************************************** #
 #                                                                              #
-#    ft_irc - Phase 1: Project Skeleton                                        #
+#    ft_irc - Phase 1 & 2: Project Skeleton & Data Processing Layer           #
 #                                                                              #
 #    Makefile for building the ircserv executable                               #
 #                                                                              #
@@ -17,7 +17,9 @@ SRC_DIR		= src
 OBJ_DIR		= obj
 
 SRCS		= src/main.cpp \
-			  src/Server.cpp
+			  src/Server.cpp \
+			  src/BufferManager.cpp \
+			  src/Parser.cpp
 
 OBJS		= $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
 

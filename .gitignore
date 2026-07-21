@@ -1,0 +1,4 @@
+ircserv
+obj/
+test_runner
+*.o
