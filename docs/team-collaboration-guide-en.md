@@ -63,7 +63,7 @@ Because three people are working on the same project, but each one works on a di
 The interface is the contract between modules. That means the method signatures, return types, and parameters that others depend on.
 
 Simple example:
-- Ismail calls `BufferManager::extractMessage()` in his code.
+- Ismail calls `BufferManager::extract_complete_lines()` in his code.
 - If Souhail changes that method name or its parameters without informing Ismail, Ismail’s code will no longer compile.
 
 **Solution:** lock the interfaces early. Everyone is free to change the internal implementation, but the interface is sacred — it must not change without agreement.
