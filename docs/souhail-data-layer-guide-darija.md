@@ -50,7 +50,7 @@ bm.remove_client(fd);
 
 ### Moomayyizat
 - **Aman mn TCP fragmentation**: Ila l-message ja mqssam (f7al `"NICK "` fi loop wa `"souhail\r\n"` fi loop khor), BufferManager kay-jma3hom wa makay-khrjhoms 7ta kay-kmlo b `\r\n`.
-- **Himaaya mn Overflow**: Ila l-buffer fat 512 bytes bla `\r\n`, BufferManager kay-qssam l-line bach y-7mi l-memory mn DoS attack.
+- **Himaaya mn Overflow**: Ila l-buffer fat 512 bytes (m3a CRLF, ya3ni 510 dyal l-content) bla `\r\n`, BufferManager kay-qssam l-line bach y-7mi l-memory mn DoS attack.
 - **Mustaqill (Standalone)**: Makay-3tamadch 3la `Server` aw `Client` classes.
 
 ---
