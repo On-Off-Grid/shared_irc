@@ -13,6 +13,7 @@
 # define CLIENT_HPP
 
 # include <string>
+# include "BufferManager.hpp"
 
 /**
  * @class Client
@@ -22,6 +23,7 @@
  *  - Stores the client's socket file descriptor.
  *  - Stores the client's IP address (set once on creation).
  *  - Tracks whether the client has completed registration.
+ *  - Contains the client's BufferManager for storing fragmented I/O.
  *
  * This class does NOT handle:
  *  - Networking (recv/send)         → Ayoub
@@ -46,6 +48,8 @@ class Client
 		int					getFd() const;
 		const std::string&	getIp() const;
 		bool				isRegistered() const;
+		BufferManager&		getBuffer();
+		const BufferManager& getBuffer() const;
 
 		/* --- Setters --- */
 		void				setRegistered(bool state);
@@ -57,9 +61,10 @@ class Client
 		Client& operator=(const Client& other);
 
 		/* --- Attributes --- */
-		int			_fd;
-		std::string	_ip;
-		bool		_registered;
+		int				_fd;
+		std::string		_ip;
+		bool			_registered;
+		BufferManager	_buffer;
 };
 
 #endif

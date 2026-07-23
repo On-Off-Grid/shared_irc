@@ -71,6 +71,22 @@ bool	Client::isRegistered() const
 	return _registered;
 }
 
+/**
+ * @brief Returns a reference to the client's buffer manager.
+ */
+BufferManager&	Client::getBuffer()
+{
+	return _buffer;
+}
+
+/**
+ * @brief Returns a const reference to the client's buffer manager.
+ */
+const BufferManager&	Client::getBuffer() const
+{
+	return _buffer;
+}
+
 /* ************************************************************************** */
 /*                               SETTERS                                      */
 /* ************************************************************************** */

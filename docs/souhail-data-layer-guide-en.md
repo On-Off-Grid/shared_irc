@@ -25,33 +25,28 @@ The data layer handles:
 ### Core Interface
 
 ```cpp
-#include "BufferManager.hpp"
+#include "Client.hpp"
 
-BufferManager bm;
-
-// 1. When a client connects (or first recv):
-bm.add_client(fd);
+// 1. BufferManager is stored as a member inside Client, accessed via getBuffer()
+BufferManager &bm = client.getBuffer();
 
 // 2. When recv(fd, buf, len, 0) receives raw bytes from socket:
 std::string raw_chunk(buf, bytes_read);
-bm.append_data(fd, raw_chunk);
+bm.append_data(raw_chunk);
 
 // 3. Extract all complete lines (delimited by \r\n or \n):
-std::vector<std::string> lines = bm.extract_complete_lines(fd);
+std::vector<std::string> lines = bm.extract_complete_lines();
 
 for (size_t i = 0; i < lines.size(); ++i)
 {
     // Pass line to Parser
 }
-
-// 4. When client disconnects:
-bm.remove_client(fd);
 ```
 
 ### Key Guarantees
 - **TCP Fragmentation safe**: Incomplete chunks remain in internal buffer across event loops until `\r\n` is received.
 - **Overflow Protection**: Automatically truncates lines exceeding `512` bytes (including CRLF, i.e. 510 bytes of content) to prevent DoS via unbounded buffering.
-- **Standalone**: Does not depend on `Client` or `Server` classes.
+- **Standalone Class**: The `BufferManager` itself remains completely decoupled and does not know about the `Client` or `Server` classes.
 
 ---
 
@@ -112,22 +107,21 @@ ssize_t bytes = recv(clientFd, buf, sizeof(buf), 0);
 
 if (bytes > 0)
 {
-    _bufferManager.append_data(clientFd, std::string(buf, bytes));
-    std::vector<std::string> lines = _bufferManager.extract_complete_lines(clientFd);
-
-    for (size_t i = 0; i < lines.size(); ++i)
+    Client* client = getClient(clientFd);
+    if (client)
     {
-        ParsedCommand cmd = _parser.parse_line(lines[i]);
-        if (cmd.is_valid)
+        client->getBuffer().append_data(std::string(buf, bytes));
+        std::vector<std::string> lines = client->getBuffer().extract_complete_lines();
+
+        for (size_t i = 0; i < lines.size(); ++i)
         {
-            _dispatcher.dispatch(clientFd, cmd);
+            ParsedCommand cmd = _parser.parse_line(lines[i]);
+            if (cmd.is_valid)
+            {
+                _dispatcher.dispatch(clientFd, cmd);
+            }
         }
     }
-}
-else if (bytes == 0)
-{
-    // Disconnect cleanup
-    _bufferManager.remove_client(clientFd);
 }
 ```
 
