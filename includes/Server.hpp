@@ -23,7 +23,7 @@
 # include <fcntl.h>
 # include <unistd.h>
 
-# include "Client.hpp"
+class Client;
 
 class Server
 {
