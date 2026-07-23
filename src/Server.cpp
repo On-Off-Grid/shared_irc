@@ -180,7 +180,16 @@ void	Server::addClient(int fd, const std::string& ip)
 {
 	if (_clients.find(fd) != _clients.end())
 		return ;
-	_clients[fd] = new Client(fd, ip);
+	Client* client = new Client(fd, ip);
+	try
+	{
+		_clients.insert(std::map<int, Client*>::value_type(fd, client));
+	}
+	catch (...)
+	{
+		delete client;
+		throw;
+	}
 	std::cout << "Client added (fd " << fd << ", ip " << ip << ")." << std::endl;
 }
 
