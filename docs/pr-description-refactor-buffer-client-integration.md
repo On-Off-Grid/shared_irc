@@ -10,7 +10,7 @@
 ## What changed
 - **Refactored `BufferManager` (`includes/BufferManager.hpp`, `src/BufferManager.cpp`)**:
   - Removed all references to `fd_t` (socket file descriptor) and the internal `std::map<fd_t, std::string> _buffers`.
-  - Simplifed class to manage a single `std::string` buffer representing one client's buffer.
+  - Simplified class to manage a single `std::string` buffer representing one client's buffer.
   - Updated methods (`append_data`, `extract_complete_lines`, etc.) to operate parameterless on the single local buffer.
 - **Integrated inside `Client` (`includes/Client.hpp`, `src/Client.cpp`)**:
   - Added `BufferManager _buffer` as a private member attribute inside the `Client` class.
