@@ -3,11 +3,13 @@
 /*   Server.cpp                                                               */
 /*                                                                            */
 /*   Phase 2: Sockets & Connections                                           */
-/*   Implementation of the Server class — networking initialization           */
+/*   Phase 3: Client Connection Management                                    */
+/*   Implementation of the Server class                                       */
 /*                                                                            */
 /* ************************************************************************** */
 
 #include "Server.hpp"
+#include "Client.hpp"
 
 /* ************************************************************************** */
 /*                          CONSTRUCTORS / DESTRUCTOR                         */
@@ -22,6 +24,7 @@ Server::Server(int port, const std::string& password)
 
 Server::~Server()
 {
+	_clearClients();
 	if (_serverFd != -1)
 	{
 		close(_serverFd);
@@ -155,4 +158,108 @@ void	Server::_startListening()
 		throw std::runtime_error(std::string("listen() failed: ") + strerror(errno));
 	}
 	std::cout << "Server listening on port " << _port << std::endl;
+}
+
+/* ************************************************************************** */
+/*                    CLIENT MANAGEMENT (Phase 3 — Ismail)                    */
+/* ************************************************************************** */
+
+/**
+ * @brief Adds a new Client to the server.
+ * @param fd  The file descriptor returned by accept().
+ * @param ip  The IP address string of the remote client.
+ *
+ * If a client with the same fd already exists, this is a logic error
+ * (caller should never add a duplicate), so we silently ignore it.
+ *
+ * Integration:
+ *   Ayoub's networking layer will call this right after accept():
+ *     int clientFd = accept(...);
+ *     server.addClient(clientFd, ipString);
+ */
+void	Server::addClient(int fd, const std::string& ip)
+{
+	if (_clients.find(fd) != _clients.end())
+		return ;
+	Client* client = new Client(fd, ip);
+	try
+	{
+		_clients.insert(std::map<int, Client*>::value_type(fd, client));
+	}
+	catch (...)
+	{
+		delete client;
+		throw;
+	}
+	std::cout << "Client added (fd " << fd << ", ip " << ip << ")." << std::endl;
+}
+
+/**
+ * @brief Removes and deletes a Client from the server.
+ * @param fd  The file descriptor of the client to remove.
+ *
+ * If the fd is not found the call is a no-op, which avoids crashes
+ * in edge cases (double-remove, race on disconnect, etc.).
+ *
+ * The caller (Ayoub’s networking layer) is responsible for calling
+ * close(fd) before or after this call.
+ */
+void	Server::removeClient(int fd)
+{
+	std::map<int, Client*>::iterator it = _clients.find(fd);
+	if (it == _clients.end())
+		return ;
+	delete it->second;
+	_clients.erase(it);
+	std::cout << "Client removed (fd " << fd << ")." << std::endl;
+}
+
+/**
+ * @brief Returns a pointer to the Client with the given fd.
+ * @param fd  The file descriptor to look up.
+ * @return    Pointer to the Client, or NULL if not found.
+ */
+Client*	Server::getClient(int fd) const
+{
+	std::map<int, Client*>::const_iterator it = _clients.find(fd);
+	if (it == _clients.end())
+		return NULL;
+	return it->second;
+}
+
+/**
+ * @brief Checks whether a Client with the given fd exists.
+ * @param fd  The file descriptor to check.
+ * @return    true if found, false otherwise.
+ */
+bool	Server::hasClient(int fd) const
+{
+	return _clients.find(fd) != _clients.end();
+}
+
+/**
+ * @brief Returns a const reference to the entire client map.
+ *
+ * Useful for Ayoub’s event loop to iterate over all connected clients
+ * when building the pollfd array or broadcasting messages.
+ */
+const std::map<int, Client*>&	Server::getClients() const
+{
+	return _clients;
+}
+
+/**
+ * @brief Deletes every Client and clears the container.
+ *
+ * Called from the destructor to guarantee no memory leaks.
+ * After this call the map is empty and every Client* is freed.
+ */
+void	Server::_clearClients()
+{
+	for (std::map<int, Client*>::iterator it = _clients.begin();
+		 it != _clients.end(); ++it)
+	{
+		delete it->second;
+	}
+	_clients.clear();
 }
