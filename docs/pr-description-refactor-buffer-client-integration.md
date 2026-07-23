@@ -7,7 +7,7 @@
 
 ---
 
-## ## What changed
+## What changed
 - **Refactored `BufferManager` (`includes/BufferManager.hpp`, `src/BufferManager.cpp`)**:
   - Removed all references to `fd_t` (socket file descriptor) and the internal `std::map<fd_t, std::string> _buffers`.
   - Simplifed class to manage a single `std::string` buffer representing one client's buffer.
