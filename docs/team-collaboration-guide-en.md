@@ -421,7 +421,7 @@ This is the dependency map — who depends on whom:
 
 | Interface | File | What it contains | Who uses it |
 |---|---|---|---|
-| **BufferManager** | `BufferManager.hpp` | `add_client(fd)`, `append_data(fd, chunk)`, `extract_complete_lines(fd)`, `remove_client(fd)` | Ismail (stores it in Client and calls it when `recv()` receives data) |
+| **BufferManager** | `BufferManager.hpp` | `append_data(chunk)`, `extract_complete_lines()`, `clear_buffer()` | Ismail (stores one BufferManager in each Client and calls it when `recv()` receives data) |
 | **Parser** | `Parser.hpp` | `parse_line(line)` → returns a `ParsedCommand` containing Command + Params | Ismail (passes the result to the Dispatcher) |
 | **Makefile** | `Makefile` | `make`, `make clean`, `make fclean`, `make re` | Whole team |
 
