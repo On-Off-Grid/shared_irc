@@ -8,27 +8,24 @@ static void test_buffer_manager()
     std::cout << "--- Testing BufferManager ---" << std::endl;
     BufferManager bm;
 
-    fd_t client1 = 4;
-    bm.add_client(client1);
-
     // Test 1: Chunked input (fragmented data over TCP)
-    bm.append_data(client1, "NICK ");
-    std::vector<std::string> lines1 = bm.extract_complete_lines(client1);
+    bm.append_data("NICK ");
+    std::vector<std::string> lines1 = bm.extract_complete_lines();
     assert(lines1.empty()); // No CRLF yet
 
-    bm.append_data(client1, "souhail\r\nUSER ");
-    std::vector<std::string> lines2 = bm.extract_complete_lines(client1);
+    bm.append_data("souhail\r\nUSER ");
+    std::vector<std::string> lines2 = bm.extract_complete_lines();
     assert(lines2.size() == 1);
     assert(lines2[0] == "NICK souhail");
 
-    bm.append_data(client1, "s 0 * :Souhail Name\r\n");
-    std::vector<std::string> lines3 = bm.extract_complete_lines(client1);
+    bm.append_data("s 0 * :Souhail Name\r\n");
+    std::vector<std::string> lines3 = bm.extract_complete_lines();
     assert(lines3.size() == 1);
     assert(lines3[0] == "USER s 0 * :Souhail Name");
 
     // Test 2: Multiple lines in single TCP chunk
-    bm.append_data(client1, "PING 12345\r\nPONG 12345\r\n");
-    std::vector<std::string> lines4 = bm.extract_complete_lines(client1);
+    bm.append_data("PING 12345\r\nPONG 12345\r\n");
+    std::vector<std::string> lines4 = bm.extract_complete_lines();
     assert(lines4.size() == 2);
     assert(lines4[0] == "PING 12345");
     assert(lines4[1] == "PONG 12345");

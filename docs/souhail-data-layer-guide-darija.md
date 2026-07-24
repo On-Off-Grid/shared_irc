@@ -25,33 +25,28 @@ L-goal dyal had l-module:
 ### Kifach katkhdem fi l-code
 
 ```cpp
-#include "BufferManager.hpp"
+#include "Client.hpp"
 
-BufferManager bm;
-
-// 1. Mli kay-connecter client jdid:
-bm.add_client(fd);
+// 1. BufferManager khddam f7al member f l-Client object, kat-jiboh b getBuffer()
+BufferManager &bm = client.getBuffer();
 
 // 2. Mli kay-wsal l-data f recv(fd, buf, len, 0):
 std::string raw_chunk(buf, bytes_read);
-bm.append_data(fd, raw_chunk);
+bm.append_data(raw_chunk);
 
 // 3. Kat-khrj l-lines kmlin li fihom \r\n (aw \n):
-std::vector<std::string> lines = bm.extract_complete_lines(fd);
+std::vector<std::string> lines = bm.extract_complete_lines();
 
 for (size_t i = 0; i < lines.size(); ++i)
 {
     // Kat-passi l-line l Parser...
 }
-
-// 4. Mli kay-deconnecter l-client:
-bm.remove_client(fd);
 ```
 
 ### Moomayyizat
 - **Aman mn TCP fragmentation**: Ila l-message ja mqssam (f7al `"NICK "` fi loop wa `"souhail\r\n"` fi loop khor), BufferManager kay-jma3hom wa makay-khrjhoms 7ta kay-kmlo b `\r\n`.
 - **Himaaya mn Overflow**: Ila l-buffer fat 512 bytes (m3a CRLF, ya3ni 510 dyal l-content) bla `\r\n`, BufferManager kay-qssam l-line bach y-7mi l-memory mn DoS attack.
-- **Mustaqill (Standalone)**: Makay-3tamadch 3la `Server` aw `Client` classes.
+- **Mustaqill Class**: L-`BufferManager` brasso ma-3ndo 3alaqa b `Client` aw `Server` classes (completely decoupled).
 
 ---
 
@@ -106,28 +101,27 @@ else if (cmd.command == "PRIVMSG")
 ## 4. Kifach Ismail y-integrer hadshi f `Server::run()`
 
 ```cpp
-// F-l-main loop mli recv() kay-rje3 bytes > 0:
+// Inside event loop when recv() > 0:
 char buf[1024];
 ssize_t bytes = recv(clientFd, buf, sizeof(buf), 0);
 
 if (bytes > 0)
 {
-    _bufferManager.append_data(clientFd, std::string(buf, bytes));
-    std::vector<std::string> lines = _bufferManager.extract_complete_lines(clientFd);
-
-    for (size_t i = 0; i < lines.size(); ++i)
+    Client* client = getClient(clientFd);
+    if (client)
     {
-        ParsedCommand cmd = _parser.parse_line(lines[i]);
-        if (cmd.is_valid)
+        client->getBuffer().append_data(std::string(buf, bytes));
+        std::vector<std::string> lines = client->getBuffer().extract_complete_lines();
+
+        for (size_t i = 0; i < lines.size(); ++i)
         {
-            _dispatcher.dispatch(clientFd, cmd);
+            ParsedCommand cmd = _parser.parse_line(lines[i]);
+            if (cmd.is_valid)
+            {
+                _dispatcher.dispatch(clientFd, cmd);
+            }
         }
     }
-}
-else if (bytes == 0)
-{
-    // Clean up l-client mli kay-disconnecter
-    _bufferManager.remove_client(clientFd);
 }
 ```
 

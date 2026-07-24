@@ -1,6 +1,6 @@
 #include "BufferManager.hpp"
 
-BufferManager::BufferManager(void) : _max_line_length(510)
+BufferManager::BufferManager(void) : _buffer(""), _max_line_length(510)
 {
 }
 
@@ -13,7 +13,7 @@ BufferManager &BufferManager::operator=(const BufferManager &other)
 {
     if (this != &other)
     {
-        _buffers = other._buffers;
+        _buffer = other._buffer;
         _max_line_length = other._max_line_length;
     }
     return (*this);
@@ -28,43 +28,24 @@ void BufferManager::set_max_line_length(size_t max_len)
     _max_line_length = max_len;
 }
 
-void BufferManager::add_client(fd_t fd)
+void BufferManager::append_data(const std::string &chunk)
 {
-    _buffers[fd] = "";
+    _buffer += chunk;
 }
 
-void BufferManager::remove_client(fd_t fd)
-{
-    _buffers.erase(fd);
-}
-
-bool BufferManager::has_client(fd_t fd) const
-{
-    return (_buffers.find(fd) != _buffers.end());
-}
-
-void BufferManager::append_data(fd_t fd, const std::string &chunk)
-{
-    if (!has_client(fd))
-        add_client(fd);
-    _buffers[fd] += chunk;
-}
-
-std::vector<std::string> BufferManager::extract_complete_lines(fd_t fd)
+std::vector<std::string> BufferManager::extract_complete_lines()
 {
     std::vector<std::string> lines;
-    std::map<fd_t, std::string>::iterator it = _buffers.find(fd);
 
-    if (it == _buffers.end() || it->second.empty())
+    if (_buffer.empty())
         return (lines);
 
-    std::string &buf = it->second;
     size_t pos;
 
-    while ((pos = buf.find('\n')) != std::string::npos)
+    while ((pos = _buffer.find('\n')) != std::string::npos)
     {
-        std::string line = buf.substr(0, pos);
-        buf.erase(0, pos + 1);
+        std::string line = _buffer.substr(0, pos);
+        _buffer.erase(0, pos + 1);
 
         if (!line.empty() && line[line.size() - 1] == '\r')
             line.erase(line.size() - 1);
@@ -75,37 +56,26 @@ std::vector<std::string> BufferManager::extract_complete_lines(fd_t fd)
         lines.push_back(line);
     }
 
-    if (buf.size() > _max_line_length)
+    if (_buffer.size() > _max_line_length)
     {
-        lines.push_back(buf.substr(0, _max_line_length));
-        buf.clear();
+        lines.push_back(_buffer.substr(0, _max_line_length));
+        _buffer.clear();
     }
 
     return (lines);
 }
 
-bool BufferManager::has_buffered_data(fd_t fd) const
+bool BufferManager::has_buffered_data() const
 {
-    std::map<fd_t, std::string>::const_iterator it;
-
-    it = _buffers.find(fd);
-    if (it == _buffers.end())
-        return (false);
-    return (!it->second.empty());
+    return (!_buffer.empty());
 }
 
-std::string BufferManager::get_buffer_copy(fd_t fd) const
+std::string BufferManager::get_buffer_copy() const
 {
-    std::map<fd_t, std::string>::const_iterator it;
-
-    it = _buffers.find(fd);
-    if (it == _buffers.end())
-        return ("");
-    return (it->second);
+    return (_buffer);
 }
 
-void BufferManager::clear_buffer(fd_t fd)
+void BufferManager::clear_buffer()
 {
-    if (has_client(fd))
-        _buffers[fd].clear();
+    _buffer.clear();
 }
