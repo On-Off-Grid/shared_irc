@@ -194,7 +194,7 @@ void	Server::_configureSocket()
 {
 	std::cout << "Setting SO_REUSEADDR..." << std::endl;
 	int optval = 1;
-	if (setsockopt(_serverFd, SOL_SOCKET, 0, &optval, sizeof(optval)) == -1)
+	if (setsockopt(_serverFd, SOL_SOCKET, SO_REUSEADDR, &optval, sizeof(optval)) == -1)
 	{
 		close(_serverFd);
 		_serverFd = -1;
