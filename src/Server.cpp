@@ -725,6 +725,7 @@ void	Server::_setupSignals()
 		throw std::runtime_error("sigaction(SIGINT) failed");
 	if (sigaction(SIGTERM, &sa, NULL) == -1)
 		throw std::runtime_error("sigaction(SIGTERM) failed");
+	sa.sa_handler = SIG_IGN;
 	if (sigaction(SIGPIPE, &sa, NULL) == -1)
 		throw std::runtime_error("sigaction(SIGPIPE) failed");
 }
