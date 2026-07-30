@@ -419,6 +419,8 @@ void	Server::_acceptNewClient()
 
 		/* Set the new client socket to non-blocking */
 		_setSocketNonBlocking(clientFd);
+		if (fcntl(clientFd, F_GETFL, 0) == -1)
+			continue ;
 
 		/* Register client in the Server's client map */
 		addClient(clientFd, clientIp);
