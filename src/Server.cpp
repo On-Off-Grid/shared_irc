@@ -1,15 +1,21 @@
 /* ************************************************************************** */
 /*                                                                            */
-/*   Server.cpp                                                               */
-/*                                                                            */
-/*   Phase 2: Sockets & Connections                                           */
-/*   Phase 3: Client Connection Management                                    */
-/*   Implementation of the Server class                                       */
+/*                                                        :::      ::::::::   */
+/*   Server.cpp                                         :+:      :+:    :+:   */
+/*                                                    +:+ +:+         +:+     */
+/*   By: ismail <ismail@student.42.fr>              +#+  +:+       +#+        */
+/*                                                +#+#+#+#+#+   +#+           */
+/*   Created: Invalid date        by ss                #+#    #+#             */
+/*   Updated: 2026/07/28 01:34:47 by ismail           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
 
-#include "Server.hpp"
 #include "Client.hpp"
+#include "Parser.hpp"
+#include "Server.hpp"
+
+/* ---- Static member definition (Phase 4: Signal Handling) ---- */
+volatile sig_atomic_t Server::_shutdown = 0;
 
 /* ************************************************************************** */
 /*                          CONSTRUCTORS / DESTRUCTOR                         */
@@ -45,16 +51,119 @@ void	Server::init()
 	_setNonBlocking();
 	_bindSocket();
 	_startListening();
+	_addPollFd(_serverFd);
+	_setupSignals();
 	std::cout << "Server ready." << std::endl;
 }
 
+/**
+ * Phase 4: Event Loop (Ayoub)
+ *
+ * Replaces the Phase 2 placeholder pause() loop with a real poll()-based
+ * event loop.  The flow is:
+ *
+ *   1. poll() blocks until at least one fd is ready.
+ *   2. If the server socket is readable → accept a new client.
+ *   3. If a client socket is readable   → recv() incoming bytes.
+ *   4. If a client disconnects          → close + removeClient.
+ *
+ * No IRC parsing happens here.  Raw bytes are forwarded to BufferManager.
+ */
 void	Server::run()
 {
-	std::cout << "Server is waiting... (press Ctrl+C to stop)" << std::endl;
-	/* Phase 2 ends after listen(). No poll(), no accept(), no recv().       */
-	/* We simply pause to keep the process alive so the socket stays open.   */
-	while (true)
-		pause();
+	std::cout << "Server event loop started. (press Ctrl+C to stop)"
+			  << std::endl;
+
+	while (!_shutdown)
+	{
+		/* ---- poll(): wait for events on all monitored fds ---- */
+		int pollCount = poll(&_pollfds[0], _pollfds.size(), -1);
+		if (pollCount == -1)
+		{
+			/* EINTR: poll() was interrupted by a signal (e.g. SIGINT). */
+			/* This is normal and not an error — just retry.            */
+			if (errno == EINTR)
+			{
+				if (_shutdown)
+					break ;
+				continue ;
+			}
+			throw std::runtime_error(
+				std::string("poll() failed: ") + strerror(errno));
+		}
+
+		/* ---- Iterate over all monitored fds ---- */
+		/* We iterate with an index because the vector may change size   */
+		/* during iteration (accept adds, disconnect removes).           */
+		for (size_t i = 0; i < _pollfds.size(); ++i)
+		{
+			/* Skip fds with no pending events */
+			if (_pollfds[i].revents == 0)
+				continue ;
+
+			/* ---- Error / hang-up on this fd ---- */
+			if (_pollfds[i].revents & (POLLERR | POLLHUP | POLLNVAL))
+			{
+				if (_pollfds[i].fd == _serverFd)
+				{
+					throw std::runtime_error(
+						"poll() reported error on server socket");
+				}
+				_disconnectClient(_pollfds[i].fd);
+				--i;	/* vector shrank, re-check current index */
+				continue ;
+			}
+
+			/* ---- Readable event (POLLIN) ---- */
+			if (_pollfds[i].revents & POLLIN)
+			{
+				if (_pollfds[i].fd == _serverFd)
+				{
+					/* New incoming connection */
+					_acceptNewClient();
+				}
+				else
+				{
+					/* Data from an existing client */
+					int currentFd = _pollfds[i].fd;
+					size_t oldSize = _pollfds.size();
+					_receiveData(currentFd);
+					/* _receiveData may call _disconnectClient which    */
+					/* swap-erases the pollfd entry. If the vector      */
+					/* shrank, the current index now holds a different  */
+					/* fd that was swapped in; we must re-check it.     */
+					if (_pollfds.size() < oldSize)
+						--i;
+				}
+			}
+		}
+	}
+
+	std::cout << "\nServer shutting down gracefully." << std::endl;
+
+	/* ---- Close every connected client socket ---- */
+	for (std::map<int, Client*>::iterator it = _clients.begin();
+		 it != _clients.end(); ++it)
+	{
+		std::cout << "Closing client socket (fd " << it->first << ")."
+				  << std::endl;
+		close(it->first);
+	}
+
+	/* ---- Remove every client (frees memory) ---- */
+	_clearClients();
+	_pollfds.clear();
+
+	/* ---- Close the listening socket ---- */
+	if (_serverFd != -1)
+	{
+		std::cout << "Closing server socket (fd " << _serverFd << ")."
+				  << std::endl;
+		close(_serverFd);
+		_serverFd = -1;
+	}
+
+	std::cout << "Server shutdown complete." << std::endl;
 }
 
 /* ************************************************************************** */
@@ -262,4 +371,363 @@ void	Server::_clearClients()
 		delete it->second;
 	}
 	_clients.clear();
+}
+
+/* ************************************************************************** */
+/*                    EVENT LOOP HELPERS (Phase 4 — Ayoub)                    */
+/* ************************************************************************** */
+
+/**
+ * @brief Accept a new incoming TCP connection.
+ *
+ * Flow:
+ *   1. accept() returns a new client fd and fills the address struct.
+ *   2. Convert the IP to a printable string with inet_ntoa().
+ *   3. Set the new client socket to non-blocking.
+ *   4. Register the client: server.addClient(clientFd, clientIp).
+ *   5. Monitor the new fd by adding it to the pollfd vector.
+ *
+ * accept() is called in a loop to drain all pending connections,
+ * because the server socket is non-blocking and poll() only wakes us once.
+ */
+void	Server::_acceptNewClient()
+{
+	while (true)
+	{
+		struct sockaddr_in clientAddr;
+		socklen_t addrLen = sizeof(clientAddr);
+		std::memset(&clientAddr, 0, sizeof(clientAddr));
+
+		int clientFd = accept(_serverFd,
+			(struct sockaddr *)&clientAddr, &addrLen);
+		if (clientFd == -1)
+		{
+			/* EAGAIN / EWOULDBLOCK: no more pending connections.        */
+			/* This is expected on a non-blocking socket — just return.  */
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+				break ;
+			/* EINTR: accept was interrupted by a signal — retry.        */
+			if (errno == EINTR)
+				continue ;
+			/* Any other error is unexpected.                            */
+			std::cerr << "accept() failed: " << strerror(errno) << std::endl;
+			break ;
+		}
+
+		/* Convert binary IP to human-readable string */
+		std::string clientIp(inet_ntoa(clientAddr.sin_addr));
+
+		/* Set the new client socket to non-blocking */
+		_setSocketNonBlocking(clientFd);
+		if (fcntl(clientFd, F_GETFL, 0) == -1)
+			continue ;
+
+		/* Register client in the Server's client map */
+		addClient(clientFd, clientIp);
+
+		/* Start monitoring this fd for POLLIN events */
+		_addPollFd(clientFd);
+
+		std::cout << "New connection from " << clientIp
+				  << " (fd " << clientFd << ")." << std::endl;
+	}
+}
+
+/**
+ * @brief Receive raw bytes from a connected client.
+ *
+ * @param fd  The file descriptor to recv() from.
+ *
+ * Flow:
+ *   1. recv() into a local buffer.
+ *   2. If recv() returns 0 → graceful disconnect (client closed connection).
+ *   3. If recv() returns -1 → check errno.
+ *      - EAGAIN/EWOULDBLOCK: nothing to read right now (normal).
+ *      - EINTR: interrupted by signal, retry.
+ *      - anything else: fatal error → disconnect.
+ *   4. If bytes > 0 → forward raw data to Client's BufferManager.
+ *
+ * This function does NOT parse or interpret the received data.
+ * It simply calls client->getBuffer().append_data(rawBytes).
+ */
+void	Server::_receiveData(int fd)
+{
+	char buf[1024];
+
+	ssize_t bytesRead = recv(fd, buf, sizeof(buf), 0);
+
+	/* ---- Graceful disconnect ---- */
+	if (bytesRead == 0)
+	{
+		std::cout << "Client disconnected (fd " << fd << ")." << std::endl;
+		_disconnectClient(fd);
+		return ;
+	}
+
+	/* ---- Error handling ---- */
+	if (bytesRead == -1)
+	{
+		/* Non-blocking socket: nothing to read right now. */
+		if (errno == EAGAIN || errno == EWOULDBLOCK)
+			return ;
+		/* Signal interrupted the call — not an error. */
+		if (errno == EINTR)
+			return ;
+		/* Fatal recv error — disconnect this client. */
+		std::cerr << "recv() error on fd " << fd << ": "
+				  << strerror(errno) << std::endl;
+		_disconnectClient(fd);
+		return ;
+	}
+
+	/* ---- Forward raw bytes to the client's BufferManager ---- */
+	Client* client = getClient(fd);
+	if (client)
+	{
+		std::string rawData(buf, bytesRead);
+		client->getBuffer().append_data(rawData);
+
+		/* Extract and process any complete lines (Phase 4 hook) */
+		_processClientBuffer(fd);
+	}
+}
+
+/**
+ * @brief Cleanly disconnect a client.
+ *
+ * @param fd  The file descriptor of the client to disconnect.
+ *
+ * Ownership rules:
+ *   - Networking layer owns: socket descriptors, pollfd collection.
+ *   - Server owns: Client objects.
+ *
+ * So we:
+ *   1. close(fd)        — networking layer responsibility.
+ *   2. removeClient(fd) — delegates to Server to delete Client*.
+ *   3. _removePollFd(fd) — stop monitoring this fd.
+ */
+void	Server::_disconnectClient(int fd)
+{
+	close(fd);
+	removeClient(fd);
+	_removePollFd(fd);
+}
+
+/**
+ * @brief Add a file descriptor to the pollfd collection.
+ *
+ * @param fd  The fd to monitor.
+ *
+ * All fds are monitored for POLLIN (data available to read).
+ * POLLERR and POLLHUP are always reported by poll() regardless
+ * of the events field, so we don't need to set them explicitly.
+ */
+void	Server::_addPollFd(int fd)
+{
+	struct pollfd pfd;
+	std::memset(&pfd, 0, sizeof(pfd));
+	pfd.fd      = fd;
+	pfd.events  = POLLIN;
+	pfd.revents = 0;
+	_pollfds.push_back(pfd);
+}
+
+/**
+ * @brief Remove a file descriptor from the pollfd collection.
+ *
+ * @param fd  The fd to stop monitoring.
+ *
+ * We find the entry by linear scan and swap-erase for O(1) removal.
+ * The order of pollfd entries does not matter to poll().
+ */
+void	Server::_removePollFd(int fd)
+{
+	for (size_t i = 0; i < _pollfds.size(); ++i)
+	{
+		if (_pollfds[i].fd == fd)
+		{
+			/* Swap with last element, then pop (O(1) removal) */
+			_pollfds[i] = _pollfds[_pollfds.size() - 1];
+			_pollfds.pop_back();
+			return ;
+		}
+	}
+}
+
+/**
+ * @brief Set a socket to non-blocking mode.
+ *
+ * @param fd  The socket file descriptor.
+ *
+ * Uses fcntl() to add O_NONBLOCK to the existing flags.
+ * If this fails, the socket is closed and the client is not added.
+ *
+ * This is separate from _setNonBlocking() which handles the server socket
+ * and throws on error. For client sockets, we log and close gracefully.
+ */
+void	Server::_setSocketNonBlocking(int fd)
+{
+	int flags = fcntl(fd, F_GETFL, 0);
+	if (flags == -1)
+	{
+		std::cerr << "fcntl(F_GETFL) failed on fd " << fd << ": "
+				  << strerror(errno) << std::endl;
+		close(fd);
+		return ;
+	}
+	if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
+	{
+		std::cerr << "fcntl(F_SETFL) failed on fd " << fd << ": "
+				  << strerror(errno) << std::endl;
+		close(fd);
+		return ;
+	}
+}
+
+/* ************************************************************************** */
+/*                SEND / BUFFER-PROCESS (Phase 4 — Ayoub)                     */
+/* ************************************************************************** */
+
+/**
+ * @brief Extract complete lines from a client's BufferManager and parse them.
+ *
+ * @param fd  The file descriptor of the client.
+ *
+ * After raw bytes are appended in _receiveData(), this method pulls
+ * fully delimited lines (\r\n terminated) from the BufferManager.
+ *
+ * Phase 4 scope:
+ *   - Extract complete lines from BufferManager.
+ *   - Parse each line through the Parser to produce a ParsedCommand.
+ *   - Log the fd, raw line, and parsed command name.
+ *   - Do NOT execute, dispatch, or authenticate any IRC commands.
+ *
+ * Phase 5 (Command Dispatcher) will replace the log with routing to
+ * the appropriate command handler.
+ */
+void	Server::_processClientBuffer(int fd)
+{
+	Client* client = getClient(fd);
+	if (!client)
+		return ;
+
+	std::vector<std::string> lines = client->getBuffer().extract_complete_lines();
+	for (size_t j = 0; j < lines.size(); ++j)
+	{
+		std::cout << "[fd=" << fd << "] Raw: " << lines[j] << std::endl;
+
+		ParsedCommand cmd = _parser.parse_line(lines[j]);
+		if (cmd.is_valid)
+		{
+			std::cout << "[fd=" << fd << "] " << cmd.command;
+			for (size_t p = 0; p < cmd.params.size(); ++p)
+				std::cout << " " << cmd.params[p];
+			std::cout << std::endl;
+		}
+		else
+		{
+			std::cout << "[fd=" << fd << "] (invalid/empty line)"
+					  << std::endl;
+		}
+		/* TODO Phase 5: dispatch cmd to the appropriate command handler */
+	}
+}
+
+/**
+ * @brief Low-level send wrapper for writing raw bytes to a socket.
+ *
+ * @param fd    The file descriptor to write to.
+ * @param data  The raw byte string to send.
+ *
+ * Uses send() in a loop to handle partial writes.  If the socket
+ * would block, we currently drop the remaining bytes and log a
+ * warning (a proper send queue could be added later if needed).
+ */
+void	Server::_sendData(int fd, const std::string& data)
+{
+	size_t totalSent = 0;
+	size_t remaining = data.size();
+
+	while (totalSent < data.size())
+	{
+		ssize_t bytesSent = send(fd, data.c_str() + totalSent, remaining, 0);
+		if (bytesSent == -1)
+		{
+			if (errno == EAGAIN || errno == EWOULDBLOCK)
+			{
+				std::cerr << "send() would block on fd " << fd
+						  << " — dropping remaining bytes." << std::endl;
+				return ;
+			}
+			if (errno == EINTR)
+				continue ;
+			std::cerr << "send() error on fd " << fd << ": "
+					  << strerror(errno) << std::endl;
+			return ;
+		}
+		totalSent += bytesSent;
+		remaining -= bytesSent;
+	}
+}
+
+/**
+ * @brief Public API to send an IRC message to a specific client.
+ *
+ * @param fd       The client's file descriptor.
+ * @param message  The IRC message to send (without trailing \r\n).
+ *
+ * Automatically appends \r\n per the IRC protocol (RFC 2812 §2.3).
+ * This is the method that Phase 5+ command handlers should call
+ * to reply to clients.
+ */
+void	Server::sendToClient(int fd, const std::string& message)
+{
+	std::string fullMsg = message + "\r\n";
+	_sendData(fd, fullMsg);
+}
+
+/* ************************************************************************** */
+/*                SIGNAL HANDLING (Phase 4 — Ayoub)                           */
+/* ************************************************************************** */
+
+/**
+ * @brief Static signal handler for SIGINT and SIGTERM.
+ *
+ * @param signum  The signal number received.
+ *
+ * Sets the _shutdown flag to 1.  The event loop in run() checks
+ * this flag and exits cleanly, allowing the destructor to free
+ * all resources (close fds, delete clients).
+ *
+ * Note: Only async-signal-safe operations are allowed here.
+ * Setting a volatile sig_atomic_t variable is safe.
+ */
+void	Server::_signalHandler(int signum)
+{
+	(void)signum;
+	_shutdown = 1;
+}
+
+/**
+ * @brief Register signal handlers for graceful shutdown.
+ *
+ * Catches SIGINT (Ctrl+C) and SIGTERM so the server can clean up
+ * instead of dying abruptly.  Uses sigaction() for portable,
+ * reliable signal handling (preferred over signal()).
+ */
+void	Server::_setupSignals()
+{
+	struct sigaction sa;
+	std::memset(&sa, 0, sizeof(sa));
+	sa.sa_handler = _signalHandler;
+	sigemptyset(&sa.sa_mask);
+	sa.sa_flags = 0;
+
+	if (sigaction(SIGINT, &sa, NULL) == -1)
+		throw std::runtime_error("sigaction(SIGINT) failed");
+	if (sigaction(SIGTERM, &sa, NULL) == -1)
+		throw std::runtime_error("sigaction(SIGTERM) failed");
+	sa.sa_handler = SIG_IGN;
+	if (sigaction(SIGPIPE, &sa, NULL) == -1)
+		throw std::runtime_error("sigaction(SIGPIPE) failed");
 }
