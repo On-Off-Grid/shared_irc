@@ -5,6 +5,7 @@
 /*   Phase 2: Sockets & Connections                                           */
 /*   Phase 3: Client Connection Management                                    */
 /*   Phase 4: Event Loop & Networking Layer                                   */
+/*   Phase 5: Command Dispatcher & Registration                               */
 /*   Class declaration for the IRC Server                                     */
 /*                                                                            */
 /* ************************************************************************** */
@@ -30,6 +31,7 @@
 # include <poll.h>
 
 class Client;
+class CommandDispatcher;
 
 class Server
 {
@@ -52,6 +54,12 @@ class Server
 		bool							hasClient(int fd) const;
 		const std::map<int, Client*>&	getClients() const;
 
+		/* --- Phase 5: Public disconnect (called by CommandDispatcher on QUIT) --- */
+		void						disconnectClient(int fd);
+
+		/* --- Phase 5: Password accessor (used by CommandDispatcher) --- */
+		const std::string&			getPassword() const;
+
 	private:
 		/* --- Orthodox Canonical Form (disabled) --- */
 		Server();
@@ -73,7 +81,6 @@ class Server
 		void	_receiveData(int fd);
 		void	_processClientBuffer(int fd);
 		void	_sendData(int fd, const std::string& data);
-		void	_disconnectClient(int fd);
 		void	_addPollFd(int fd);
 		void	_removePollFd(int fd);
 		void	_setSocketNonBlocking(int fd);
@@ -88,8 +95,9 @@ class Server
 		std::string					_password;
 		int							_serverFd;
 		std::map<int, Client*>		_clients;
-		std::vector<struct pollfd>	_pollfds;	/* Phase 4: pollfd collection */
-	Parser						_parser;	/* Phase 4: IRC line parser   */
+		std::vector<struct pollfd>	_pollfds;		/* Phase 4: pollfd collection  */
+		Parser						_parser;		/* Phase 4: IRC line parser    */
+		CommandDispatcher*			_dispatcher;	/* Phase 5: command dispatcher */
 };
 
 #endif

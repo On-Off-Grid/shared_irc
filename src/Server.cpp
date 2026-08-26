@@ -13,6 +13,7 @@
 #include "Client.hpp"
 #include "Parser.hpp"
 #include "Server.hpp"
+#include "CommandDispatcher.hpp"
 
 /* ---- Static member definition (Phase 4: Signal Handling) ---- */
 volatile sig_atomic_t Server::_shutdown = 0;
@@ -22,14 +23,17 @@ volatile sig_atomic_t Server::_shutdown = 0;
 /* ************************************************************************** */
 
 Server::Server(int port, const std::string& password)
-	: _port(port), _password(password), _serverFd(-1)
+	: _port(port), _password(password), _serverFd(-1), _dispatcher(NULL)
 {
 	std::cout << "Server object created. Port: " << _port
 			  << ", Password: [PROTECTED]" << std::endl;
+	_dispatcher = new CommandDispatcher(*this);
 }
 
 Server::~Server()
 {
+	delete _dispatcher;
+	_dispatcher = NULL;
 	_clearClients();
 	if (_serverFd != -1)
 	{
@@ -109,7 +113,7 @@ void	Server::run()
 					throw std::runtime_error(
 						"poll() reported error on server socket");
 				}
-				_disconnectClient(_pollfds[i].fd);
+				disconnectClient(_pollfds[i].fd);
 				--i;	/* vector shrank, re-check current index */
 				continue ;
 			}
@@ -128,7 +132,7 @@ void	Server::run()
 					int currentFd = _pollfds[i].fd;
 					size_t oldSize = _pollfds.size();
 					_receiveData(currentFd);
-					/* _receiveData may call _disconnectClient which    */
+					/* _receiveData may call disconnectClient which    */
 					/* swap-erases the pollfd entry. If the vector      */
 					/* shrank, the current index now holds a different  */
 					/* fd that was swapped in; we must re-check it.     */
@@ -460,7 +464,7 @@ void	Server::_receiveData(int fd)
 	if (bytesRead == 0)
 	{
 		std::cout << "Client disconnected (fd " << fd << ")." << std::endl;
-		_disconnectClient(fd);
+		disconnectClient(fd);
 		return ;
 	}
 
@@ -476,7 +480,7 @@ void	Server::_receiveData(int fd)
 		/* Fatal recv error — disconnect this client. */
 		std::cerr << "recv() error on fd " << fd << ": "
 				  << strerror(errno) << std::endl;
-		_disconnectClient(fd);
+		disconnectClient(fd);
 		return ;
 	}
 
@@ -505,12 +509,24 @@ void	Server::_receiveData(int fd)
  *   1. close(fd)        — networking layer responsibility.
  *   2. removeClient(fd) — delegates to Server to delete Client*.
  *   3. _removePollFd(fd) — stop monitoring this fd.
+ *
+ * Now public (Phase 5) so CommandDispatcher can call it on QUIT.
  */
-void	Server::_disconnectClient(int fd)
+void	Server::disconnectClient(int fd)
 {
 	close(fd);
 	removeClient(fd);
 	_removePollFd(fd);
+}
+
+/**
+ * @brief Return the server password (Phase 5).
+ *
+ * Used by CommandDispatcher to validate the PASS command.
+ */
+const std::string&	Server::getPassword() const
+{
+	return _password;
 }
 
 /**
@@ -589,21 +605,16 @@ void	Server::_setSocketNonBlocking(int fd)
 /* ************************************************************************** */
 
 /**
- * @brief Extract complete lines from a client's BufferManager and parse them.
+ * @brief Extract complete lines from a client's BufferManager and dispatch them.
  *
  * @param fd  The file descriptor of the client.
  *
- * After raw bytes are appended in _receiveData(), this method pulls
- * fully delimited lines (\r\n terminated) from the BufferManager.
+ * Phase 5 replaces the Phase 4 TODO: instead of logging only, each valid
+ * ParsedCommand is forwarded to CommandDispatcher::dispatch(), which routes
+ * it to the correct handler (PASS, NICK, USER, QUIT, …).
  *
- * Phase 4 scope:
- *   - Extract complete lines from BufferManager.
- *   - Parse each line through the Parser to produce a ParsedCommand.
- *   - Log the fd, raw line, and parsed command name.
- *   - Do NOT execute, dispatch, or authenticate any IRC commands.
- *
- * Phase 5 (Command Dispatcher) will replace the log with routing to
- * the appropriate command handler.
+ * The dispatcher may call disconnectClient() if it processes a QUIT, so
+ * we check hasClient(fd) after every dispatch() call.
  */
 void	Server::_processClientBuffer(int fd)
 {
@@ -614,22 +625,17 @@ void	Server::_processClientBuffer(int fd)
 	std::vector<std::string> lines = client->getBuffer().extract_complete_lines();
 	for (size_t j = 0; j < lines.size(); ++j)
 	{
+		/* Safety: dispatcher may have disconnected this client */
+		if (!hasClient(fd))
+			break ;
+
 		std::cout << "[fd=" << fd << "] Raw: " << lines[j] << std::endl;
 
 		ParsedCommand cmd = _parser.parse_line(lines[j]);
 		if (cmd.is_valid)
-		{
-			std::cout << "[fd=" << fd << "] " << cmd.command;
-			for (size_t p = 0; p < cmd.params.size(); ++p)
-				std::cout << " " << cmd.params[p];
-			std::cout << std::endl;
-		}
+			_dispatcher->dispatch(fd, cmd);
 		else
-		{
-			std::cout << "[fd=" << fd << "] (invalid/empty line)"
-					  << std::endl;
-		}
-		/* TODO Phase 5: dispatch cmd to the appropriate command handler */
+			std::cout << "[fd=" << fd << "] (invalid/empty line)" << std::endl;
 	}
 }
 
