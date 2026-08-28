@@ -19,6 +19,9 @@ OBJ_DIR		= obj
 SRCS		= src/main.cpp \
 			  src/Server.cpp \
 			  src/Client.cpp \
+			  src/Channel.cpp \
+			  src/Replies.cpp \
+			  src/CommandDispatcher.cpp \
 			  src/BufferManager.cpp \
 			  src/Parser.cpp
 

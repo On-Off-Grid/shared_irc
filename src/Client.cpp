@@ -9,7 +9,9 @@
 /*   Updated: 2026/07/22 21:09:20 by ismail           ###   ########.fr       */
 /*                                                                            */
 /* ************************************************************************** */
+
 #include "Client.hpp"
+
 /* ************************************************************************** */
 /*                          CONSTRUCTORS / DESTRUCTOR                         */
 /* ************************************************************************** */
@@ -19,11 +21,12 @@
  * @param fd  The socket file descriptor returned by accept().
  * @param ip  The IP address of the remote client (from inet_ntoa or similar).
  *
- * Registration starts as false.  It will be set to true by the
- * authentication phase (PASS + NICK + USER) implemented in a later phase.
+ * Registration starts as false.  It is set to true by CommandDispatcher
+ * once PASS + NICK + USER have all been accepted.
  */
 Client::Client(int fd, const std::string& ip)
-	: _fd(fd), _ip(ip), _registered(false)
+	: _fd(fd), _ip(ip), _registered(false),
+	  _nickname(""), _username(""), _realname(""), _passReceived(false)
 {
 }
 
@@ -63,8 +66,7 @@ const std::string&	Client::getIp() const
 /**
  * @brief Returns true if the client has completed registration.
  *
- * In later phases, registration means PASS + NICK + USER were all
- * accepted successfully.  In Phase 3 this always returns false.
+ * Registration means PASS + NICK + USER were all accepted successfully.
  */
 bool	Client::isRegistered() const
 {
@@ -87,6 +89,44 @@ const BufferManager&	Client::getBuffer() const
 	return _buffer;
 }
 
+/* ---- Phase 5: Registration getters ---- */
+
+const std::string&	Client::getNickname() const
+{
+	return _nickname;
+}
+
+const std::string&	Client::getUsername() const
+{
+	return _username;
+}
+
+const std::string&	Client::getRealname() const
+{
+	return _realname;
+}
+
+bool	Client::hasReceivedPass() const
+{
+	return _passReceived;
+}
+
+/**
+ * @brief Returns true if the client has set a nickname via NICK.
+ */
+bool	Client::hasNick() const
+{
+	return !_nickname.empty();
+}
+
+/**
+ * @brief Returns true if the client has sent USER (username set).
+ */
+bool	Client::hasUser() const
+{
+	return !_username.empty();
+}
+
 /* ************************************************************************** */
 /*                               SETTERS                                      */
 /* ************************************************************************** */
@@ -95,9 +135,31 @@ const BufferManager&	Client::getBuffer() const
  * @brief Sets the registration state of the client.
  * @param state  true if the client has completed registration.
  *
- * Called by the authentication logic in later phases.
+ * Called by CommandDispatcher once PASS + NICK + USER are all satisfied.
  */
 void	Client::setRegistered(bool state)
 {
 	_registered = state;
+}
+
+/* ---- Phase 5: Registration setters ---- */
+
+void	Client::setNickname(const std::string& nick)
+{
+	_nickname = nick;
+}
+
+void	Client::setUsername(const std::string& user)
+{
+	_username = user;
+}
+
+void	Client::setRealname(const std::string& real)
+{
+	_realname = real;
+}
+
+void	Client::setPassReceived(bool state)
+{
+	_passReceived = state;
 }
