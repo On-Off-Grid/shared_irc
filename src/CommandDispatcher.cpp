@@ -992,7 +992,7 @@ void CommandDispatcher::_handleMode(int fd, Client* client, const ParsedCommand&
 			}
 			else
 			{
-				_server.sendToClient(fd, Replies::errNeedMoreParams(nick, "MODE +o/-o"));
+				_server.sendToClient(fd, Replies::errNeedMoreParams(nick, "MODE"));
 			}
 		}
 	}
