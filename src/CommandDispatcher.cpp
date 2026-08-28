@@ -899,6 +899,8 @@ void CommandDispatcher::_handleMode(int fd, Client* client, const ParsedCommand&
 	for (size_t i = 0; i < modeString.size(); ++i)
 	{
 		char c = modeString[i];
+		if (c != '+' && c != '-' && appliedModes.empty())
+			appliedModes += (sign ? "+" : "-");
 		if (c == '+')
 		{
 			sign = true;
