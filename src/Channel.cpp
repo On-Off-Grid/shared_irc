@@ -12,6 +12,9 @@
 #include "Channel.hpp"
 #include "Client.hpp"
 #include <algorithm>
+#include <cerrno>
+#include <cstring>
+#include <iostream>
 
 /* ************************************************************************** */
 /*                          CONSTRUCTORS / DESTRUCTOR                         */
@@ -173,7 +176,32 @@ void Channel::broadcast(const std::string& message, int excludeFd) const
 	{
 		if (it->first == excludeFd)
 			continue;
-		/* Best-effort send — a full send queue belongs to Phase 7 */
-		send(it->first, fullMsg.c_str(), fullMsg.size(), 0);
+
+		int fd = it->first;
+		size_t totalSent = 0;
+		size_t remaining = fullMsg.size();
+
+		while (totalSent < fullMsg.size())
+		{
+			ssize_t bytesSent = send(fd, fullMsg.c_str() + totalSent, remaining, 0);
+			if (bytesSent == 0)
+				break;
+			if (bytesSent == -1)
+			{
+				if (errno == EAGAIN || errno == EWOULDBLOCK)
+				{
+					std::cerr << "send() would block on fd " << fd
+							  << " (broadcast) — dropping remaining bytes." << std::endl;
+					break;
+				}
+				if (errno == EINTR)
+					continue;
+				std::cerr << "send() error on fd " << fd << " (broadcast): "
+						  << strerror(errno) << std::endl;
+				break;
+			}
+			totalSent += bytesSent;
+			remaining -= bytesSent;
+		}
 	}
 }
