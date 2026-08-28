@@ -31,6 +31,7 @@
 # include <poll.h>
 
 class Client;
+class Channel;
 class CommandDispatcher;
 
 class Server
@@ -59,6 +60,13 @@ class Server
 
 		/* --- Phase 5: Password accessor (used by CommandDispatcher) --- */
 		const std::string&			getPassword() const;
+
+		/* --- Phase 6: Channel management --- */
+		Channel*								getChannel(const std::string& name) const;
+		Channel*								createChannel(const std::string& name);
+		void									deleteChannel(const std::string& name);
+		const std::map<std::string, Channel*>&	getChannels() const;
+		Client*									getClientByNickname(const std::string& nick) const;
 
 	private:
 		/* --- Orthodox Canonical Form (disabled) --- */
@@ -95,6 +103,7 @@ class Server
 		std::string					_password;
 		int							_serverFd;
 		std::map<int, Client*>		_clients;
+		std::map<std::string, Channel*>	_channels;		/* Phase 6: active channels map */
 		std::vector<struct pollfd>	_pollfds;		/* Phase 4: pollfd collection  */
 		Parser						_parser;		/* Phase 4: IRC line parser    */
 		CommandDispatcher*			_dispatcher;	/* Phase 5: command dispatcher */

@@ -65,6 +65,27 @@ class Channel
 		/* --- Broadcast --- */
 		void		broadcast(const std::string& message, int excludeFd = -1) const;
 
+		/* --- Mode Getters / Setters --- */
+		bool				isInviteOnly() const;
+		void				setInviteOnly(bool state);
+
+		bool				isTopicRestricted() const;
+		void				setTopicRestricted(bool state);
+
+		const std::string&	getKey() const;
+		void				setKey(const std::string& key);
+
+		int					getLimit() const;
+		void				setLimit(int limit);
+
+		/* --- Invite Management --- */
+		void				addInvite(int fd);
+		void				removeInvite(int fd);
+		bool				isInvited(int fd) const;
+
+		/* --- Helpers --- */
+		bool				isFull() const;
+
 	private:
 		/* --- Orthodox Canonical Form (disabled) --- */
 		Channel();
@@ -76,6 +97,13 @@ class Channel
 		std::string					_topic;
 		std::map<int, Client*>		_members;
 		std::vector<int>			_operators;
+
+		/* --- Phase 6: Mode and invite flags --- */
+		bool						_inviteOnly;
+		bool						_topicRestricted;
+		std::string					_key;
+		int							_limit;
+		std::vector<int>			_invitedFds;
 };
 
 #endif

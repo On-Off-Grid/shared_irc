@@ -59,6 +59,16 @@ class CommandDispatcher
 		void _handleUser(int fd, Client* client, const ParsedCommand& cmd);
 		void _handleQuit(int fd, Client* client, const ParsedCommand& cmd);
 
+		/* --- Phase 6: Channel & Command handlers --- */
+		void _handleJoin(int fd, Client* client, const ParsedCommand& cmd);
+		void _handlePart(int fd, Client* client, const ParsedCommand& cmd);
+		void _handlePrivmsg(int fd, Client* client, const ParsedCommand& cmd);
+		void _handleNotice(int fd, Client* client, const ParsedCommand& cmd);
+		void _handleTopic(int fd, Client* client, const ParsedCommand& cmd);
+		void _handleKick(int fd, Client* client, const ParsedCommand& cmd);
+		void _handleInvite(int fd, Client* client, const ParsedCommand& cmd);
+		void _handleMode(int fd, Client* client, const ParsedCommand& cmd);
+
 		/* --- Helpers --- */
 		bool _isValidNickname(const std::string& nick) const;
 		bool _isNicknameInUse(const std::string& nick, int excludeFd) const;

@@ -11,6 +11,7 @@
 /* ************************************************************************** */
 
 #include "Client.hpp"
+#include "Channel.hpp"
 #include "Parser.hpp"
 #include "Server.hpp"
 #include "CommandDispatcher.hpp"
@@ -35,6 +36,12 @@ Server::~Server()
 	delete _dispatcher;
 	_dispatcher = NULL;
 	_clearClients();
+	for (std::map<std::string, Channel*>::iterator it = _channels.begin();
+		 it != _channels.end(); ++it)
+	{
+		delete it->second;
+	}
+	_channels.clear();
 	if (_serverFd != -1)
 	{
 		close(_serverFd);
@@ -162,6 +169,12 @@ void	Server::run()
 
 	/* ---- Remove every client (frees memory) ---- */
 	_clearClients();
+	for (std::map<std::string, Channel*>::iterator it = _channels.begin();
+		 it != _channels.end(); ++it)
+	{
+		delete it->second;
+	}
+	_channels.clear();
 	_pollfds.clear();
 
 	/* ---- Close the listening socket ---- */
@@ -519,6 +532,35 @@ void	Server::_receiveData(int fd)
  */
 void	Server::disconnectClient(int fd)
 {
+	Client* client = getClient(fd);
+	if (client)
+	{
+		std::string nick = client->getNickname().empty() ? "*" : client->getNickname();
+		std::string user = client->getUsername().empty() ? "*" : client->getUsername();
+		std::string quitMsg = ":" + nick + "!" + user + "@" + client->getIp() + " QUIT :Client disconnected";
+
+		std::vector<std::string> emptyChannels;
+		for (std::map<std::string, Channel*>::iterator it = _channels.begin();
+		     it != _channels.end(); ++it)
+		{
+			Channel* chan = it->second;
+			if (chan->hasMember(fd))
+			{
+				chan->broadcast(quitMsg, fd);
+				chan->removeMember(fd);
+			}
+			chan->removeInvite(fd);
+			if (chan->getMembers().empty())
+			{
+				emptyChannels.push_back(chan->getName());
+			}
+		}
+		for (size_t i = 0; i < emptyChannels.size(); ++i)
+		{
+			deleteChannel(emptyChannels[i]);
+		}
+	}
+
 	close(fd);
 	removeClient(fd);
 	_removePollFd(fd);
@@ -742,4 +784,89 @@ void	Server::_setupSignals()
 	sa.sa_handler = SIG_IGN;
 	if (sigaction(SIGPIPE, &sa, NULL) == -1)
 		throw std::runtime_error("sigaction(SIGPIPE) failed");
+}
+
+/* ************************************************************************** */
+/*                    CHANNEL MANAGEMENT (Phase 6)                            */
+/* ************************************************************************** */
+
+Channel* Server::getChannel(const std::string& name) const
+{
+	std::map<std::string, Channel*>::const_iterator it = _channels.find(name);
+	if (it == _channels.end())
+		return NULL;
+	return it->second;
+}
+
+Channel* Server::createChannel(const std::string& name)
+{
+	Channel* chan = getChannel(name);
+	if (chan)
+		return chan;
+	chan = new Channel(name);
+	try
+	{
+		_channels[name] = chan;
+	}
+	catch (...)
+	{
+		delete chan;
+		throw;
+	}
+	std::cout << "Channel created: " << name << std::endl;
+	return chan;
+}
+
+void Server::deleteChannel(const std::string& name)
+{
+	std::map<std::string, Channel*>::iterator it = _channels.find(name);
+	if (it == _channels.end())
+		return;
+	delete it->second;
+	_channels.erase(it);
+	std::cout << "Channel deleted: " << name << std::endl;
+}
+
+const std::map<std::string, Channel*>& Server::getChannels() const
+{
+	return _channels;
+}
+
+Client* Server::getClientByNickname(const std::string& nick) const
+{
+	for (std::map<int, Client*>::const_iterator it = _clients.begin();
+	     it != _clients.end(); ++it)
+	{
+		std::string n1 = it->second->getNickname();
+		std::string n2 = nick;
+		if (n1.size() == n2.size())
+		{
+			bool equal = true;
+			for (size_t i = 0; i < n1.size(); ++i)
+			{
+				char c1 = n1[i];
+				char c2 = n2[i];
+				if (c1 >= 'A' && c1 <= 'Z') c1 = c1 - 'A' + 'a';
+				if (c2 >= 'A' && c2 <= 'Z') c2 = c2 - 'A' + 'a';
+				if (c1 == '[') c1 = '{';
+				else if (c1 == ']') c1 = '}';
+				else if (c1 == '\\') c1 = '|';
+				else if (c1 == '^') c1 = '~';
+
+				if (c2 == '[') c2 = '{';
+				else if (c2 == ']') c2 = '}';
+				else if (c2 == '\\') c2 = '|';
+				else if (c2 == '^') c2 = '~';
+
+				if (c1 != c2)
+				{
+					equal = false;
+					break;
+				}
+			}
+			if (equal)
+				return it->second;
+		}
+	}
+	return NULL;
 }
