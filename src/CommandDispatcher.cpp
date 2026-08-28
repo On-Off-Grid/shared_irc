@@ -878,7 +878,7 @@ void CommandDispatcher::_handleMode(int fd, Client* client, const ParsedCommand&
 			ss << chan->getLimit();
 			params += ss.str();
 		}
-		if (activeModes == "+") activeModes = "";
+		/* keep "+" even when no modes are set */
 		_server.sendToClient(fd, Replies::channelModeIs(nick, target, activeModes, params));
 		return;
 	}
