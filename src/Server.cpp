@@ -35,6 +35,7 @@ Server::~Server()
 {
 	delete _dispatcher;
 	_dispatcher = NULL;
+	_outgoingBuffers.clear();
 	_clearClients();
 	for (std::map<std::string, Channel*>::iterator it = _channels.begin();
 		 it != _channels.end(); ++it)
@@ -139,6 +140,13 @@ void	Server::run()
 					_receiveData(_pollfds[i].fd);
 				}
 			}
+
+			/* ---- Writable event (POLLOUT) ---- */
+			if (_pollfds[i].fd != -1 && _pollfds[i].fd != _serverFd
+				&& (_pollfds[i].revents & POLLOUT))
+			{
+				_flushOutgoingData(_pollfds[i].fd);
+			}
 		}
 
 		/* ---- Clean up disconnected fds from _pollfds (post-loop) ---- */
@@ -175,6 +183,7 @@ void	Server::run()
 		delete it->second;
 	}
 	_channels.clear();
+	_outgoingBuffers.clear();
 	_pollfds.clear();
 
 	/* ---- Close the listening socket ---- */
@@ -546,7 +555,7 @@ void	Server::disconnectClient(int fd)
 			Channel* chan = it->second;
 			if (chan->hasMember(fd))
 			{
-				chan->broadcast(quitMsg, fd);
+				broadcastToChannel(*chan, quitMsg, fd);
 				chan->removeMember(fd);
 			}
 			chan->removeInvite(fd);
@@ -562,6 +571,7 @@ void	Server::disconnectClient(int fd)
 	}
 
 	close(fd);
+	_outgoingBuffers.erase(fd);
 	removeClient(fd);
 	_removePollFd(fd);
 }
@@ -612,6 +622,21 @@ void	Server::_removePollFd(int fd)
 			// Mark for deferred cleanup in Server::run() to avoid index mutation mid-iteration.
 			_pollfds[i].fd = -1;
 			_pollfds[i].revents = 0;
+			return ;
+		}
+	}
+}
+
+void	Server::_setPollOut(int fd, bool enabled)
+{
+	for (size_t i = 0; i < _pollfds.size(); ++i)
+	{
+		if (_pollfds[i].fd == fd)
+		{
+			if (enabled)
+				_pollfds[i].events |= POLLOUT;
+			else
+				_pollfds[i].events &= ~POLLOUT;
 			return ;
 		}
 	}
@@ -688,40 +713,42 @@ void	Server::_processClientBuffer(int fd)
 }
 
 /**
- * @brief Low-level send wrapper for writing raw bytes to a socket.
+ * @brief Flush queued bytes to a socket after poll() reports POLLOUT.
  *
  * @param fd    The file descriptor to write to.
- * @param data  The raw byte string to send.
- *
- * Uses send() in a loop to handle partial writes.  If the socket
- * would block, we currently drop the remaining bytes and log a
- * warning (a proper send queue could be added later if needed).
+ * send() is only called from this POLLOUT path, which keeps outgoing I/O
+ * under the same poll loop as incoming data and the listening socket.
  */
-void	Server::_sendData(int fd, const std::string& data)
+void	Server::_flushOutgoingData(int fd)
 {
-	size_t totalSent = 0;
-	size_t remaining = data.size();
-
-	while (totalSent < data.size())
+	std::map<int, std::string>::iterator it = _outgoingBuffers.find(fd);
+	if (it == _outgoingBuffers.end())
 	{
-		ssize_t bytesSent = send(fd, data.c_str() + totalSent, remaining, 0);
+		_setPollOut(fd, false);
+		return ;
+	}
+
+	std::string& data = it->second;
+	while (!data.empty())
+	{
+		ssize_t bytesSent = send(fd, data.c_str(), data.size(), 0);
 		if (bytesSent == -1)
 		{
 			if (errno == EAGAIN || errno == EWOULDBLOCK)
-			{
-				std::cerr << "send() would block on fd " << fd
-						  << " — dropping remaining bytes." << std::endl;
 				return ;
-			}
 			if (errno == EINTR)
 				continue ;
 			std::cerr << "send() error on fd " << fd << ": "
 					  << strerror(errno) << std::endl;
+			disconnectClient(fd);
 			return ;
 		}
-		totalSent += bytesSent;
-		remaining -= bytesSent;
+		if (bytesSent == 0)
+			return ;
+		data.erase(0, bytesSent);
 	}
+	_outgoingBuffers.erase(fd);
+	_setPollOut(fd, false);
 }
 
 /**
@@ -730,14 +757,27 @@ void	Server::_sendData(int fd, const std::string& data)
  * @param fd       The client's file descriptor.
  * @param message  The IRC message to send (without trailing \r\n).
  *
- * Automatically appends \r\n per the IRC protocol (RFC 2812 §2.3).
- * This is the method that Phase 5+ command handlers should call
- * to reply to clients.
+ * Automatically appends \r\n per the IRC protocol (RFC 2812 §2.3), queues
+ * the bytes, then enables POLLOUT so the event loop can flush them.
  */
 void	Server::sendToClient(int fd, const std::string& message)
 {
-	std::string fullMsg = message + "\r\n";
-	_sendData(fd, fullMsg);
+	if (!hasClient(fd))
+		return ;
+	_outgoingBuffers[fd] += message + "\r\n";
+	_setPollOut(fd, true);
+}
+
+void	Server::broadcastToChannel(const Channel& channel,
+		const std::string& message, int excludeFd)
+{
+	const std::map<int, Client*>& members = channel.getMembers();
+	for (std::map<int, Client*>::const_iterator it = members.begin();
+		 it != members.end(); ++it)
+	{
+		if (it->first != excludeFd)
+			sendToClient(it->first, message);
+	}
 }
 
 /* ************************************************************************** */

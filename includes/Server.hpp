@@ -47,6 +47,8 @@ class Server
 
 		/* --- Send data to a client (Phase 4 — Ayoub) --- */
 		void	sendToClient(int fd, const std::string& message);
+		void	broadcastToChannel(const Channel& channel,
+					const std::string& message, int excludeFd = -1);
 
 		/* --- Client Management (Phase 3 — Ismail) --- */
 		void							addClient(int fd, const std::string& ip);
@@ -88,9 +90,10 @@ class Server
 		void	_acceptNewClient();
 		void	_receiveData(int fd);
 		void	_processClientBuffer(int fd);
-		void	_sendData(int fd, const std::string& data);
+		void	_flushOutgoingData(int fd);
 		void	_addPollFd(int fd);
 		void	_removePollFd(int fd);
+		void	_setPollOut(int fd, bool enabled);
 		bool	_setSocketNonBlocking(int fd);
 
 		/* --- Signal Handling (Phase 4 — Ayoub) --- */
@@ -104,6 +107,7 @@ class Server
 		int							_serverFd;
 		std::map<int, Client*>		_clients;
 		std::map<std::string, Channel*>	_channels;		/* Phase 6: active channels map */
+		std::map<int, std::string>	_outgoingBuffers;	/* Phase 7: queued socket writes */
 		std::vector<struct pollfd>	_pollfds;		/* Phase 4: pollfd collection  */
 		Parser						_parser;		/* Phase 4: IRC line parser    */
 		CommandDispatcher*			_dispatcher;	/* Phase 5: command dispatcher */

@@ -12,9 +12,6 @@
 #include "Channel.hpp"
 #include "Client.hpp"
 #include <algorithm>
-#include <cerrno>
-#include <cstring>
-#include <iostream>
 
 /* ************************************************************************** */
 /*                          CONSTRUCTORS / DESTRUCTOR                         */
@@ -146,64 +143,6 @@ bool Channel::isOperator(int fd) const
 void Channel::setTopic(const std::string& topic)
 {
 	_topic = topic;
-}
-
-/* ************************************************************************** */
-/*                              BROADCAST                                     */
-/* ************************************************************************** */
-
-/**
- * @brief Send a message to every member of the channel.
- *
- * @param message    The raw IRC message string (without CRLF).
- * @param excludeFd  fd to skip (typically the sender). Pass -1 to send to all.
- *
- * Each member's send is handled by the Client fd — the Server's
- * sendToClient() method appends CRLF and calls send().
- * Here we write directly to the fd so Channel stays decoupled from Server.
- *
- * NOTE: Phase 7 will wire this through Server::sendToClient() for proper
- *       send-queue handling. For Phase 5 we write directly with send().
- */
-#include <sys/socket.h>
-#include <string>
-
-void Channel::broadcast(const std::string& message, int excludeFd) const
-{
-	std::string fullMsg = message + "\r\n";
-	for (std::map<int, Client*>::const_iterator it = _members.begin();
-	     it != _members.end(); ++it)
-	{
-		if (it->first == excludeFd)
-			continue;
-
-		int fd = it->first;
-		size_t totalSent = 0;
-		size_t remaining = fullMsg.size();
-
-		while (totalSent < fullMsg.size())
-		{
-			ssize_t bytesSent = send(fd, fullMsg.c_str() + totalSent, remaining, 0);
-			if (bytesSent == 0)
-				break;
-			if (bytesSent == -1)
-			{
-				if (errno == EAGAIN || errno == EWOULDBLOCK)
-				{
-					std::cerr << "send() would block on fd " << fd
-							  << " (broadcast) — dropping remaining bytes." << std::endl;
-					break;
-				}
-				if (errno == EINTR)
-					continue;
-				std::cerr << "send() error on fd " << fd << " (broadcast): "
-						  << strerror(errno) << std::endl;
-				break;
-			}
-			totalSent += bytesSent;
-			remaining -= bytesSent;
-		}
-	}
 }
 
 /* ************************************************************************** */

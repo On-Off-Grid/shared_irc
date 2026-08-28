@@ -62,9 +62,6 @@ class Channel
 		/* --- Topic --- */
 		void		setTopic(const std::string& topic);
 
-		/* --- Broadcast --- */
-		void		broadcast(const std::string& message, int excludeFd = -1) const;
-
 		/* --- Mode Getters / Setters --- */
 		bool				isInviteOnly() const;
 		void				setInviteOnly(bool state);
