@@ -21,7 +21,7 @@
 /* ************************************************************************** */
 
 Channel::Channel(const std::string& name)
-	: _name(name), _topic(""), _inviteOnly(false), _topicRestricted(true), _key(""), _limit(-1)
+	: _name(name), _topic(""), _inviteOnly(false), _topicRestricted(false), _key(""), _limit(-1)
 {
 }
 
