@@ -310,7 +310,7 @@ bool CommandDispatcher::_isValidNickname(const std::string& nick) const
  * @brief Compare two nicknames case-insensitively using IRC case mapping.
  * RFC 2812 §2.2: {}|^ are lowercase equivalents of []\~
  */
-static bool _areNicknamesEqual(const std::string& n1, const std::string& n2)
+static bool areNicknamesEqual(const std::string& n1, const std::string& n2)
 {
 	if (n1.size() != n2.size())
 		return false;
@@ -354,7 +354,7 @@ bool CommandDispatcher::_isNicknameInUse(const std::string& nick,
 	{
 		if (it->first == excludeFd)
 			continue;
-		if (_areNicknamesEqual(it->second->getNickname(), nick))
+		if (areNicknamesEqual(it->second->getNickname(), nick))
 			return true;
 	}
 	return false;
