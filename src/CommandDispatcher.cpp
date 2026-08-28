@@ -308,7 +308,7 @@ void CommandDispatcher::_handleQuit(int fd, Client* client,
 		Channel* chan = it->second;
 		if (chan->hasMember(fd))
 		{
-			chan->broadcast(quitMsg, fd);
+			_server.broadcastToChannel(*chan, quitMsg, fd);
 			chan->removeMember(fd);
 		}
 		if (chan->getMembers().empty())
@@ -546,7 +546,7 @@ void CommandDispatcher::_handleJoin(int fd, Client* client, const ParsedCommand&
 
 		// Broadcast join to channel
 		std::string joinMsg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " JOIN :" + chanName;
-		chan->broadcast(joinMsg, -1);
+		_server.broadcastToChannel(*chan, joinMsg, -1);
 
 		// Send topic
 		if (chan->getTopic().empty())
@@ -607,7 +607,7 @@ void CommandDispatcher::_handlePart(int fd, Client* client, const ParsedCommand&
 		if (!reason.empty())
 			partMsg += " :" + reason;
 
-		chan->broadcast(partMsg, -1);
+		_server.broadcastToChannel(*chan, partMsg, -1);
 		chan->removeMember(fd);
 
 		if (chan->getMembers().empty())
@@ -644,7 +644,7 @@ void CommandDispatcher::_handlePrivmsg(int fd, Client* client, const ParsedComma
 			return;
 		}
 		std::string msg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " PRIVMSG " + target + " :" + message;
-		chan->broadcast(msg, fd);
+		_server.broadcastToChannel(*chan, msg, fd);
 	}
 	else
 	{
@@ -675,7 +675,7 @@ void CommandDispatcher::_handleNotice(int fd, Client* client, const ParsedComman
 		if (!chan || !chan->hasMember(fd))
 			return;
 		std::string msg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " NOTICE " + target + " :" + message;
-		chan->broadcast(msg, fd);
+		_server.broadcastToChannel(*chan, msg, fd);
 	}
 	else
 	{
@@ -729,7 +729,7 @@ void CommandDispatcher::_handleTopic(int fd, Client* client, const ParsedCommand
 		std::string newTopic = cmd.params[1];
 		chan->setTopic(newTopic);
 		std::string topicMsg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " TOPIC " + chanName + " :" + newTopic;
-		chan->broadcast(topicMsg, -1);
+		_server.broadcastToChannel(*chan, topicMsg, -1);
 	}
 }
 
@@ -776,7 +776,7 @@ void CommandDispatcher::_handleKick(int fd, Client* client, const ParsedCommand&
 
 	int targetFd = targetClient->getFd();
 	std::string kickMsg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " KICK " + chanName + " " + targetNick + " :" + reason;
-	chan->broadcast(kickMsg, -1);
+	_server.broadcastToChannel(*chan, kickMsg, -1);
 	chan->removeMember(targetFd);
 
 	if (chan->getMembers().empty())
@@ -1007,6 +1007,6 @@ void CommandDispatcher::_handleMode(int fd, Client* client, const ParsedCommand&
 		std::string modeAnn = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " MODE " + target + " " + appliedModes;
 		if (!appliedParams.empty())
 			modeAnn += " " + appliedParams;
-		chan->broadcast(modeAnn, -1);
+		_server.broadcastToChannel(*chan, modeAnn, -1);
 	}
 }
