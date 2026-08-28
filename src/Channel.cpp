@@ -184,6 +184,8 @@ void Channel::broadcast(const std::string& message, int excludeFd) const
 		while (totalSent < fullMsg.size())
 		{
 			ssize_t bytesSent = send(fd, fullMsg.c_str() + totalSent, remaining, 0);
+			if (bytesSent == 0)
+				break;
 			if (bytesSent == -1)
 			{
 				if (errno == EAGAIN || errno == EWOULDBLOCK)
