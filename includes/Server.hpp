@@ -83,7 +83,7 @@ class Server
 		void	_sendData(int fd, const std::string& data);
 		void	_addPollFd(int fd);
 		void	_removePollFd(int fd);
-		void	_setSocketNonBlocking(int fd);
+		bool	_setSocketNonBlocking(int fd);
 
 		/* --- Signal Handling (Phase 4 — Ayoub) --- */
 		static void					_signalHandler(int signum);

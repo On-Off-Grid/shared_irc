@@ -122,6 +122,7 @@ void CommandDispatcher::_handlePass(int fd, Client* client,
 	{
 		client->setPassReceived(true);
 		std::cout << "[fd=" << fd << "] PASS accepted." << std::endl;
+		_tryCompleteRegistration(fd, client);
 	}
 	else
 	{
@@ -306,10 +307,41 @@ bool CommandDispatcher::_isValidNickname(const std::string& nick) const
 }
 
 /**
+ * @brief Compare two nicknames case-insensitively using IRC case mapping.
+ * RFC 2812 §2.2: {}|^ are lowercase equivalents of []\~
+ */
+static bool _areNicknamesEqual(const std::string& n1, const std::string& n2)
+{
+	if (n1.size() != n2.size())
+		return false;
+	for (size_t i = 0; i < n1.size(); ++i)
+	{
+		char c1 = n1[i];
+		char c2 = n2[i];
+
+		if (c1 >= 'A' && c1 <= 'Z') c1 = c1 - 'A' + 'a';
+		if (c2 >= 'A' && c2 <= 'Z') c2 = c2 - 'A' + 'a';
+
+		if (c1 == '[') c1 = '{';
+		else if (c1 == ']') c1 = '}';
+		else if (c1 == '\\') c1 = '|';
+		else if (c1 == '^') c1 = '~';
+
+		if (c2 == '[') c2 = '{';
+		else if (c2 == ']') c2 = '}';
+		else if (c2 == '\\') c2 = '|';
+		else if (c2 == '^') c2 = '~';
+
+		if (c1 != c2)
+			return false;
+	}
+	return true;
+}
+
+/**
  * @brief Check whether a nickname is already in use by another client.
  *
- * @param nick       Nickname to check (case-insensitive per IRC, but we keep
- *                   it simple with exact match for Phase 5).
+ * @param nick       Nickname to check (case-insensitive per IRC).
  * @param excludeFd  Skip this fd (the client changing their own nick).
  * @return true if some other client already uses this nickname.
  */
@@ -322,7 +354,7 @@ bool CommandDispatcher::_isNicknameInUse(const std::string& nick,
 	{
 		if (it->first == excludeFd)
 			continue;
-		if (it->second->getNickname() == nick)
+		if (_areNicknamesEqual(it->second->getNickname(), nick))
 			return true;
 	}
 	return false;

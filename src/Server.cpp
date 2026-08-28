@@ -97,10 +97,11 @@ void	Server::run()
 		}
 
 		/* ---- Iterate over all monitored fds ---- */
-		/* We iterate with an index because the vector may change size   */
-		/* during iteration (accept adds, disconnect removes).           */
 		for (size_t i = 0; i < _pollfds.size(); ++i)
 		{
+			if (_pollfds[i].fd == -1)
+				continue ;
+
 			/* Skip fds with no pending events */
 			if (_pollfds[i].revents == 0)
 				continue ;
@@ -114,7 +115,6 @@ void	Server::run()
 						"poll() reported error on server socket");
 				}
 				disconnectClient(_pollfds[i].fd);
-				--i;	/* vector shrank, re-check current index */
 				continue ;
 			}
 
@@ -129,16 +129,22 @@ void	Server::run()
 				else
 				{
 					/* Data from an existing client */
-					int currentFd = _pollfds[i].fd;
-					size_t oldSize = _pollfds.size();
-					_receiveData(currentFd);
-					/* _receiveData may call disconnectClient which    */
-					/* swap-erases the pollfd entry. If the vector      */
-					/* shrank, the current index now holds a different  */
-					/* fd that was swapped in; we must re-check it.     */
-					if (_pollfds.size() < oldSize)
-						--i;
+					_receiveData(_pollfds[i].fd);
 				}
+			}
+		}
+
+		/* ---- Clean up disconnected fds from _pollfds (post-loop) ---- */
+		for (size_t i = 0; i < _pollfds.size(); )
+		{
+			if (_pollfds[i].fd == -1)
+			{
+				_pollfds[i] = _pollfds[_pollfds.size() - 1];
+				_pollfds.pop_back();
+			}
+			else
+			{
+				++i;
 			}
 		}
 	}
@@ -422,8 +428,7 @@ void	Server::_acceptNewClient()
 		std::string clientIp(inet_ntoa(clientAddr.sin_addr));
 
 		/* Set the new client socket to non-blocking */
-		_setSocketNonBlocking(clientFd);
-		if (fcntl(clientFd, F_GETFL, 0) == -1)
+		if (!_setSocketNonBlocking(clientFd))
 			continue ;
 
 		/* Register client in the Server's client map */
@@ -562,9 +567,8 @@ void	Server::_removePollFd(int fd)
 	{
 		if (_pollfds[i].fd == fd)
 		{
-			/* Swap with last element, then pop (O(1) removal) */
-			_pollfds[i] = _pollfds[_pollfds.size() - 1];
-			_pollfds.pop_back();
+			_pollfds[i].fd = -1;
+			_pollfds[i].revents = 0;
 			return ;
 		}
 	}
@@ -581,7 +585,7 @@ void	Server::_removePollFd(int fd)
  * This is separate from _setNonBlocking() which handles the server socket
  * and throws on error. For client sockets, we log and close gracefully.
  */
-void	Server::_setSocketNonBlocking(int fd)
+bool	Server::_setSocketNonBlocking(int fd)
 {
 	int flags = fcntl(fd, F_GETFL, 0);
 	if (flags == -1)
@@ -589,15 +593,16 @@ void	Server::_setSocketNonBlocking(int fd)
 		std::cerr << "fcntl(F_GETFL) failed on fd " << fd << ": "
 				  << strerror(errno) << std::endl;
 		close(fd);
-		return ;
+		return false;
 	}
 	if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
 	{
 		std::cerr << "fcntl(F_SETFL) failed on fd " << fd << ": "
 				  << strerror(errno) << std::endl;
 		close(fd);
-		return ;
+		return false;
 	}
+	return true;
 }
 
 /* ************************************************************************** */
