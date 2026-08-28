@@ -21,7 +21,7 @@
 /* ************************************************************************** */
 
 Channel::Channel(const std::string& name)
-	: _name(name), _topic("")
+	: _name(name), _topic(""), _inviteOnly(false), _topicRestricted(false), _key(""), _limit(-1)
 {
 }
 
@@ -204,4 +204,78 @@ void Channel::broadcast(const std::string& message, int excludeFd) const
 			remaining -= bytesSent;
 		}
 	}
+}
+
+/* ************************************************************************** */
+/*                          MODE AND INVITE MANAGEMENT                       */
+/* ************************************************************************** */
+
+bool Channel::isInviteOnly() const
+{
+	return _inviteOnly;
+}
+
+void Channel::setInviteOnly(bool state)
+{
+	_inviteOnly = state;
+}
+
+bool Channel::isTopicRestricted() const
+{
+	return _topicRestricted;
+}
+
+void Channel::setTopicRestricted(bool state)
+{
+	_topicRestricted = state;
+}
+
+const std::string& Channel::getKey() const
+{
+	return _key;
+}
+
+void Channel::setKey(const std::string& key)
+{
+	_key = key;
+}
+
+int Channel::getLimit() const
+{
+	return _limit;
+}
+
+void Channel::setLimit(int limit)
+{
+	_limit = limit;
+}
+
+void Channel::addInvite(int fd)
+{
+	if (!isInvited(fd))
+		_invitedFds.push_back(fd);
+}
+
+void Channel::removeInvite(int fd)
+{
+	_invitedFds.erase(
+		std::remove(_invitedFds.begin(), _invitedFds.end(), fd),
+		_invitedFds.end());
+}
+
+bool Channel::isInvited(int fd) const
+{
+	for (size_t i = 0; i < _invitedFds.size(); ++i)
+	{
+		if (_invitedFds[i] == fd)
+			return true;
+	}
+	return false;
+}
+
+bool Channel::isFull() const
+{
+	if (_limit > 0 && static_cast<int>(_members.size()) >= _limit)
+		return true;
+	return false;
 }

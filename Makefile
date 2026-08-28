@@ -9,7 +9,7 @@
 NAME		= ircserv
 
 CXX			= c++
-CXXFLAGS	= -Wall -Wextra -Werror -std=c++98
+CXXFLAGS	= -Wall -Wextra -Werror -std=c++98 -MMD -MP
 
 INCLUDES	= -Iincludes
 
@@ -26,6 +26,7 @@ SRCS		= src/main.cpp \
 			  src/Parser.cpp
 
 OBJS		= $(SRCS:$(SRC_DIR)/%.cpp=$(OBJ_DIR)/%.o)
+DEPS		= $(OBJS:.o=.d)
 
 # **************************************************************************** #
 #                              RULES                                           #
@@ -52,3 +53,5 @@ fclean: clean
 re: fclean all
 
 .PHONY: all clean fclean re
+
+-include $(DEPS)

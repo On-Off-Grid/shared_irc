@@ -12,9 +12,11 @@
 #include "CommandDispatcher.hpp"
 #include "Server.hpp"
 #include "Client.hpp"
+#include "Channel.hpp"
 #include "Replies.hpp"
 #include <iostream>
 #include <cctype>
+#include <sstream>
 
 /* ************************************************************************** */
 /*                          CONSTRUCTORS / DESTRUCTOR                         */
@@ -81,7 +83,48 @@ void CommandDispatcher::dispatch(int fd, const ParsedCommand& cmd)
 		return;
 	}
 
-	/* --- Registered-only commands (Phase 7+) --- */
+	/* --- Registered-only commands (Phase 6/7) --- */
+	if (cmd.command == "JOIN")
+	{
+		_handleJoin(fd, client, cmd);
+		return;
+	}
+	if (cmd.command == "PART")
+	{
+		_handlePart(fd, client, cmd);
+		return;
+	}
+	if (cmd.command == "PRIVMSG")
+	{
+		_handlePrivmsg(fd, client, cmd);
+		return;
+	}
+	if (cmd.command == "NOTICE")
+	{
+		_handleNotice(fd, client, cmd);
+		return;
+	}
+	if (cmd.command == "TOPIC")
+	{
+		_handleTopic(fd, client, cmd);
+		return;
+	}
+	if (cmd.command == "KICK")
+	{
+		_handleKick(fd, client, cmd);
+		return;
+	}
+	if (cmd.command == "INVITE")
+	{
+		_handleInvite(fd, client, cmd);
+		return;
+	}
+	if (cmd.command == "MODE")
+	{
+		_handleMode(fd, client, cmd);
+		return;
+	}
+
 	/* ERR_UNKNOWNCOMMAND for anything we don't handle yet */
 	_server.sendToClient(fd,
 		Replies::errUnknownCommand(client->getNickname(), cmd.command));
@@ -254,9 +297,31 @@ void CommandDispatcher::_handleQuit(int fd, Client* client,
 		":" + nick + "!" + user + "@" + client->getIp()
 		+ " QUIT :" + reason;
 
-	_server.sendToClient(fd, quitMsg);
-
 	std::cout << "[fd=" << fd << "] QUIT: " << reason << std::endl;
+
+	// Broadcast to all channels the client is in and remove them
+	std::vector<std::string> channelsToDelete;
+	const std::map<std::string, Channel*>& channels = _server.getChannels();
+	for (std::map<std::string, Channel*>::const_iterator it = channels.begin();
+	     it != channels.end(); ++it)
+	{
+		Channel* chan = it->second;
+		if (chan->hasMember(fd))
+		{
+			chan->broadcast(quitMsg, fd);
+			chan->removeMember(fd);
+		}
+		if (chan->getMembers().empty())
+		{
+			channelsToDelete.push_back(chan->getName());
+		}
+	}
+	for (size_t i = 0; i < channelsToDelete.size(); ++i)
+	{
+		_server.deleteChannel(channelsToDelete[i]);
+	}
+
+	_server.sendToClient(fd, quitMsg);
 
 	/* Let Server handle the actual socket/poll cleanup */
 	_server.disconnectClient(fd);
@@ -389,4 +454,559 @@ void CommandDispatcher::_tryCompleteRegistration(int fd, Client* client)
 	_server.sendToClient(fd, Replies::myInfo(nick));
 
 	std::cout << "[fd=" << fd << "] Client registered as " << nick << std::endl;
+}
+
+/* ************************************************************************** */
+/*                          PHASE 6 COMMAND HANDLERS                         */
+/* ************************************************************************** */
+
+static std::vector<std::string> _split(const std::string& str, char delim)
+{
+	std::vector<std::string> tokens;
+	std::string token;
+	std::istringstream tokenStream(str);
+	while (std::getline(tokenStream, token, delim))
+	{
+		tokens.push_back(token);
+	}
+	return tokens;
+}
+
+void CommandDispatcher::_handleJoin(int fd, Client* client, const ParsedCommand& cmd)
+{
+	std::string nick = client->getNickname();
+	if (cmd.params.empty())
+	{
+		_server.sendToClient(fd, Replies::errNeedMoreParams(nick, "JOIN"));
+		return;
+	}
+
+	std::vector<std::string> channels = _split(cmd.params[0], ',');
+	std::vector<std::string> keys;
+	if (cmd.params.size() > 1)
+		keys = _split(cmd.params[1], ',');
+
+	for (size_t i = 0; i < channels.size(); ++i)
+	{
+		std::string chanName = channels[i];
+		if (chanName.empty())
+			continue;
+
+		// Validate name starts with # or &
+		if (chanName[0] != '#' && chanName[0] != '&')
+		{
+			_server.sendToClient(fd, Replies::errNoSuchChannel(nick, chanName));
+			continue;
+		}
+
+		std::string key = "";
+		if (i < keys.size())
+			key = keys[i];
+
+		Channel* chan = _server.getChannel(chanName);
+		bool isNew = (chan == NULL);
+
+		if (isNew)
+		{
+			chan = _server.createChannel(chanName);
+		}
+
+		// Check mode checks if it's not new
+		if (!isNew)
+		{
+			// Check limit
+			if (chan->isFull())
+			{
+				_server.sendToClient(fd, Replies::errChannelIsFull(nick, chanName));
+				continue;
+			}
+			// Check invite-only
+			if (chan->isInviteOnly() && !chan->isInvited(fd))
+			{
+				_server.sendToClient(fd, Replies::errInviteOnlyChan(nick, chanName));
+				continue;
+			}
+			// Check key
+			if (!chan->getKey().empty() && chan->getKey() != key)
+			{
+				_server.sendToClient(fd, Replies::errBadChannelKey(nick, chanName));
+				continue;
+			}
+		}
+
+		// Add member
+		chan->addMember(client);
+		if (chan->isInvited(fd))
+			chan->removeInvite(fd);
+
+		if (isNew)
+		{
+			chan->addOperator(fd);
+		}
+
+		// Broadcast join to channel
+		std::string joinMsg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " JOIN :" + chanName;
+		chan->broadcast(joinMsg, -1);
+
+		// Send topic
+		if (chan->getTopic().empty())
+			_server.sendToClient(fd, Replies::noTopic(nick, chanName));
+		else
+			_server.sendToClient(fd, Replies::topic(nick, chanName, chan->getTopic()));
+
+		// Send names list
+		std::string namesList = "";
+		const std::map<int, Client*>& members = chan->getMembers();
+		for (std::map<int, Client*>::const_iterator mit = members.begin(); mit != members.end(); ++mit)
+		{
+			if (!namesList.empty())
+				namesList += " ";
+			if (chan->isOperator(mit->first))
+				namesList += "@";
+			namesList += mit->second->getNickname();
+		}
+		_server.sendToClient(fd, Replies::namReply(nick, chanName, namesList));
+		_server.sendToClient(fd, Replies::endOfNames(nick, chanName));
+	}
+}
+
+void CommandDispatcher::_handlePart(int fd, Client* client, const ParsedCommand& cmd)
+{
+	std::string nick = client->getNickname();
+	if (cmd.params.empty())
+	{
+		_server.sendToClient(fd, Replies::errNeedMoreParams(nick, "PART"));
+		return;
+	}
+
+	std::string reason = "";
+	if (cmd.params.size() > 1)
+		reason = cmd.params[1];
+
+	std::vector<std::string> channels = _split(cmd.params[0], ',');
+	for (size_t i = 0; i < channels.size(); ++i)
+	{
+		std::string chanName = channels[i];
+		if (chanName.empty())
+			continue;
+
+		Channel* chan = _server.getChannel(chanName);
+		if (!chan)
+		{
+			_server.sendToClient(fd, Replies::errNoSuchChannel(nick, chanName));
+			continue;
+		}
+
+		if (!chan->hasMember(fd))
+		{
+			_server.sendToClient(fd, Replies::errNotOnChannel(nick, chanName));
+			continue;
+		}
+
+		std::string partMsg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " PART " + chanName;
+		if (!reason.empty())
+			partMsg += " :" + reason;
+
+		chan->broadcast(partMsg, -1);
+		chan->removeMember(fd);
+
+		if (chan->getMembers().empty())
+		{
+			_server.deleteChannel(chanName);
+		}
+	}
+}
+
+void CommandDispatcher::_handlePrivmsg(int fd, Client* client, const ParsedCommand& cmd)
+{
+	std::string nick = client->getNickname();
+	if (cmd.params.size() < 2 || cmd.params[0].empty() || cmd.params[1].empty())
+	{
+		_server.sendToClient(fd, Replies::errNeedMoreParams(nick, "PRIVMSG"));
+		return;
+	}
+
+	std::string target = cmd.params[0];
+	std::string message = cmd.params[1];
+
+	// Target is channel
+	if (target[0] == '#' || target[0] == '&')
+	{
+		Channel* chan = _server.getChannel(target);
+		if (!chan)
+		{
+			_server.sendToClient(fd, Replies::errNoSuchChannel(nick, target));
+			return;
+		}
+		if (!chan->hasMember(fd))
+		{
+			_server.sendToClient(fd, Replies::errCannotSendToChan(nick, target));
+			return;
+		}
+		std::string msg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " PRIVMSG " + target + " :" + message;
+		chan->broadcast(msg, fd);
+	}
+	else
+	{
+		// Target is user
+		Client* targetClient = _server.getClientByNickname(target);
+		if (!targetClient)
+		{
+			_server.sendToClient(fd, Replies::errNoSuchNick(nick, target));
+			return;
+		}
+		std::string msg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " PRIVMSG " + targetClient->getNickname() + " :" + message;
+		_server.sendToClient(targetClient->getFd(), msg);
+	}
+}
+
+void CommandDispatcher::_handleNotice(int fd, Client* client, const ParsedCommand& cmd)
+{
+	if (cmd.params.size() < 2 || cmd.params[0].empty() || cmd.params[1].empty())
+		return;
+
+	std::string nick = client->getNickname();
+	std::string target = cmd.params[0];
+	std::string message = cmd.params[1];
+
+	if (target[0] == '#' || target[0] == '&')
+	{
+		Channel* chan = _server.getChannel(target);
+		if (!chan || !chan->hasMember(fd))
+			return;
+		std::string msg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " NOTICE " + target + " :" + message;
+		chan->broadcast(msg, fd);
+	}
+	else
+	{
+		Client* targetClient = _server.getClientByNickname(target);
+		if (!targetClient)
+			return;
+		std::string msg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " NOTICE " + targetClient->getNickname() + " :" + message;
+		_server.sendToClient(targetClient->getFd(), msg);
+	}
+}
+
+void CommandDispatcher::_handleTopic(int fd, Client* client, const ParsedCommand& cmd)
+{
+	std::string nick = client->getNickname();
+	if (cmd.params.empty())
+	{
+		_server.sendToClient(fd, Replies::errNeedMoreParams(nick, "TOPIC"));
+		return;
+	}
+
+	std::string chanName = cmd.params[0];
+	Channel* chan = _server.getChannel(chanName);
+	if (!chan)
+	{
+		_server.sendToClient(fd, Replies::errNoSuchChannel(nick, chanName));
+		return;
+	}
+
+	if (!chan->hasMember(fd))
+	{
+		_server.sendToClient(fd, Replies::errNotOnChannel(nick, chanName));
+		return;
+	}
+
+	// View topic
+	if (cmd.params.size() == 1)
+	{
+		if (chan->getTopic().empty())
+			_server.sendToClient(fd, Replies::noTopic(nick, chanName));
+		else
+			_server.sendToClient(fd, Replies::topic(nick, chanName, chan->getTopic()));
+	}
+	else
+	{
+		// Set topic
+		if (chan->isTopicRestricted() && !chan->isOperator(fd))
+		{
+			_server.sendToClient(fd, Replies::errChanOpPrivsNeeded(nick, chanName));
+			return;
+		}
+		std::string newTopic = cmd.params[1];
+		chan->setTopic(newTopic);
+		std::string topicMsg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " TOPIC " + chanName + " :" + newTopic;
+		chan->broadcast(topicMsg, -1);
+	}
+}
+
+void CommandDispatcher::_handleKick(int fd, Client* client, const ParsedCommand& cmd)
+{
+	std::string nick = client->getNickname();
+	if (cmd.params.size() < 2)
+	{
+		_server.sendToClient(fd, Replies::errNeedMoreParams(nick, "KICK"));
+		return;
+	}
+
+	std::string chanName = cmd.params[0];
+	std::string targetNick = cmd.params[1];
+	std::string reason = "Kicked by operator";
+	if (cmd.params.size() > 2)
+		reason = cmd.params[2];
+
+	Channel* chan = _server.getChannel(chanName);
+	if (!chan)
+	{
+		_server.sendToClient(fd, Replies::errNoSuchChannel(nick, chanName));
+		return;
+	}
+
+	if (!chan->hasMember(fd))
+	{
+		_server.sendToClient(fd, Replies::errNotOnChannel(nick, chanName));
+		return;
+	}
+
+	if (!chan->isOperator(fd))
+	{
+		_server.sendToClient(fd, Replies::errChanOpPrivsNeeded(nick, chanName));
+		return;
+	}
+
+	Client* targetClient = _server.getClientByNickname(targetNick);
+	if (!targetClient || !chan->hasMember(targetClient->getFd()))
+	{
+		_server.sendToClient(fd, Replies::errUserNotInChannel(nick, targetNick, chanName));
+		return;
+	}
+
+	int targetFd = targetClient->getFd();
+	std::string kickMsg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " KICK " + chanName + " " + targetNick + " :" + reason;
+	chan->broadcast(kickMsg, -1);
+	chan->removeMember(targetFd);
+
+	if (chan->getMembers().empty())
+	{
+		_server.deleteChannel(chanName);
+	}
+}
+
+void CommandDispatcher::_handleInvite(int fd, Client* client, const ParsedCommand& cmd)
+{
+	std::string nick = client->getNickname();
+	if (cmd.params.size() < 2)
+	{
+		_server.sendToClient(fd, Replies::errNeedMoreParams(nick, "INVITE"));
+		return;
+	}
+
+	std::string targetNick = cmd.params[0];
+	std::string chanName = cmd.params[1];
+
+	Channel* chan = _server.getChannel(chanName);
+	if (!chan)
+	{
+		_server.sendToClient(fd, Replies::errNoSuchChannel(nick, chanName));
+		return;
+	}
+
+	if (!chan->hasMember(fd))
+	{
+		_server.sendToClient(fd, Replies::errNotOnChannel(nick, chanName));
+		return;
+	}
+
+	if (chan->isInviteOnly() && !chan->isOperator(fd))
+	{
+		_server.sendToClient(fd, Replies::errChanOpPrivsNeeded(nick, chanName));
+		return;
+	}
+
+	Client* targetClient = _server.getClientByNickname(targetNick);
+	if (!targetClient)
+	{
+		_server.sendToClient(fd, Replies::errNoSuchNick(nick, targetNick));
+		return;
+	}
+
+	if (chan->hasMember(targetClient->getFd()))
+	{
+		_server.sendToClient(fd, Replies::errUserOnChannel(nick, targetNick, chanName));
+		return;
+	}
+
+	chan->addInvite(targetClient->getFd());
+	_server.sendToClient(fd, Replies::inviting(nick, targetNick, chanName));
+
+	std::string inviteMsg = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " INVITE " + targetNick + " :" + chanName;
+	_server.sendToClient(targetClient->getFd(), inviteMsg);
+}
+
+void CommandDispatcher::_handleMode(int fd, Client* client, const ParsedCommand& cmd)
+{
+	std::string nick = client->getNickname();
+	if (cmd.params.empty())
+	{
+		_server.sendToClient(fd, Replies::errNeedMoreParams(nick, "MODE"));
+		return;
+	}
+
+	std::string target = cmd.params[0];
+	if (target[0] != '#' && target[0] != '&')
+	{
+		return;
+	}
+
+	Channel* chan = _server.getChannel(target);
+	if (!chan)
+	{
+		_server.sendToClient(fd, Replies::errNoSuchChannel(nick, target));
+		return;
+	}
+
+	if (cmd.params.size() == 1)
+	{
+		std::string activeModes = "+";
+		std::string params = "";
+		if (chan->isInviteOnly()) activeModes += "i";
+		if (chan->isTopicRestricted()) activeModes += "t";
+		if (!chan->getKey().empty())
+		{
+			activeModes += "k";
+			if (!params.empty()) params += " ";
+			params += chan->getKey();
+		}
+		if (chan->getLimit() > 0)
+		{
+			activeModes += "l";
+			if (!params.empty()) params += " ";
+			std::ostringstream ss;
+			ss << chan->getLimit();
+			params += ss.str();
+		}
+		/* keep "+" even when no modes are set */
+		_server.sendToClient(fd, Replies::channelModeIs(nick, target, activeModes, params));
+		return;
+	}
+
+	if (!chan->isOperator(fd))
+	{
+		_server.sendToClient(fd, Replies::errChanOpPrivsNeeded(nick, target));
+		return;
+	}
+
+	std::string modeString = cmd.params[1];
+	size_t paramIdx = 2;
+
+	bool sign = true;
+	std::string appliedModes = "";
+	std::string appliedParams = "";
+
+	for (size_t i = 0; i < modeString.size(); ++i)
+	{
+		char c = modeString[i];
+		if (c != '+' && c != '-' && appliedModes.empty())
+			appliedModes += (sign ? "+" : "-");
+		if (c == '+')
+		{
+			sign = true;
+			if (appliedModes.empty() || appliedModes[appliedModes.size() - 1] != '+')
+				appliedModes += "+";
+			continue;
+		}
+		if (c == '-')
+		{
+			sign = false;
+			if (appliedModes.empty() || appliedModes[appliedModes.size() - 1] != '-')
+				appliedModes += "-";
+			continue;
+		}
+
+		if (c == 'i')
+		{
+			chan->setInviteOnly(sign);
+			appliedModes += "i";
+		}
+		else if (c == 't')
+		{
+			chan->setTopicRestricted(sign);
+			appliedModes += "t";
+		}
+		else if (c == 'k')
+		{
+			if (sign)
+			{
+				if (paramIdx < cmd.params.size())
+				{
+					std::string key = cmd.params[paramIdx++];
+					chan->setKey(key);
+					appliedModes += "k";
+					if (!appliedParams.empty()) appliedParams += " ";
+					appliedParams += key;
+				}
+			}
+			else
+			{
+				chan->setKey("");
+				appliedModes += "k";
+			}
+		}
+		else if (c == 'l')
+		{
+			if (sign)
+			{
+				if (paramIdx < cmd.params.size())
+				{
+					std::string limitStr = cmd.params[paramIdx++];
+					std::istringstream iss(limitStr);
+					int limit;
+					if (iss >> limit && limit > 0)
+					{
+						chan->setLimit(limit);
+						appliedModes += "l";
+						if (!appliedParams.empty()) appliedParams += " ";
+						appliedParams += limitStr;
+					}
+				}
+			}
+			else
+			{
+				chan->setLimit(-1);
+				appliedModes += "l";
+			}
+		}
+		else if (c == 'o')
+		{
+			if (paramIdx < cmd.params.size())
+			{
+				std::string opNick = cmd.params[paramIdx++];
+				Client* opClient = _server.getClientByNickname(opNick);
+				if (opClient && chan->hasMember(opClient->getFd()))
+				{
+					if (sign)
+						chan->addOperator(opClient->getFd());
+					else
+						chan->removeOperator(opClient->getFd());
+					appliedModes += "o";
+					if (!appliedParams.empty()) appliedParams += " ";
+					appliedParams += opNick;
+				}
+				else
+				{
+					_server.sendToClient(fd, Replies::errUserNotInChannel(nick, opNick, target));
+				}
+			}
+			else
+			{
+				_server.sendToClient(fd, Replies::errNeedMoreParams(nick, "MODE"));
+			}
+		}
+	}
+
+	if (!appliedModes.empty() && (appliedModes[appliedModes.size() - 1] == '+' || appliedModes[appliedModes.size() - 1] == '-'))
+	{
+		appliedModes.erase(appliedModes.size() - 1);
+	}
+
+	if (!appliedModes.empty())
+	{
+		std::string modeAnn = ":" + nick + "!" + client->getUsername() + "@" + client->getIp() + " MODE " + target + " " + appliedModes;
+		if (!appliedParams.empty())
+			modeAnn += " " + appliedParams;
+		chan->broadcast(modeAnn, -1);
+	}
 }
