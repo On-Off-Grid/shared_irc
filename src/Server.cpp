@@ -567,6 +567,7 @@ void	Server::_removePollFd(int fd)
 	{
 		if (_pollfds[i].fd == fd)
 		{
+			// Mark for deferred cleanup in Server::run() to avoid index mutation mid-iteration.
 			_pollfds[i].fd = -1;
 			_pollfds[i].revents = 0;
 			return ;
