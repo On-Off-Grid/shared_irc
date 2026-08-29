@@ -67,7 +67,7 @@ The server replies with the welcome burst:
   *Expected:* Server returns `:ircserv 464 * :Password incorrect`.
 * **Already Registered**: After registering successfully, send `PASS testpass` or `USER ismail 0 * :Ismail User` again.
   *Expected:* Server returns `:ircserv 462 ismail :You may not reregister`.
-* **Erronous Nickname**: Try setting nickname to invalid formats:
+* **Erroneous Nickname**: Try setting nickname to invalid formats:
   ```irc
   NICK 1ismail    (starts with a digit)
   NICK is@mail    (contains invalid character '@')
