@@ -20,7 +20,7 @@ This lesson details the theoretical and practical concepts introduced throughout
 
 ### 1. Theoretical Concepts
 * **Orthodox Canonical Form (OCF)**: C++98 standard requires classes managing dynamic resources to strictly declare a Default Constructor, Copy Constructor, Copy Assignment Operator, and Destructor. This prevents compiler-generated defaults from performing shallow copies, which leads to double-free bugs.
-* **Separation of Concerns**: Splitting the codebase into independent, encapsulated modules: Networking ([`Server`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/includes/Server.hpp)), Data Layer ([`Client`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/includes/Client.hpp), [`Channel`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/includes/Channel.hpp)), and Protocol Parsing ([`Parser`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/includes/Parser.hpp)).
+* **Separation of Concerns**: Splitting the codebase into independent, encapsulated modules: Networking ([`Server`](../includes/Server.hpp)), Data Layer ([`Client`](../includes/Client.hpp), [`Channel`](../includes/Channel.hpp)), and Protocol Parsing ([`Parser`](../includes/Parser.hpp)).
 
 ### 2. Practical Implementation
 * **Forbidden Copying**: For singleton-like manager classes (like `Server` or `Channel`), we make the Copy Constructor and Assignment Operator `private` to disable copying explicitly.
