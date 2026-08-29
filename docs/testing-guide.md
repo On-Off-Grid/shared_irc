@@ -262,7 +262,7 @@ During evaluations, peers will look for crash-scenarios. Run these checks to ver
 ### 1. Loop Index-Shifting Check
 When a client disconnects, we erase their socket from the `_pollfds` vector. 
 * **The Danger**: If client `i` is erased, the elements shift left, and index `i+1` becomes index `i`. If our event loop does `++i` unconditionally, the next client is skipped, ignoring their events.
-* **The Check**: Verify that when multiple clients send commands simultaneously and one client abruptly quits, the other clients' commands are still fully processed in the same loop cycle. Our implementation handles this post-loop in [`Server::run()`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/src/Server.cpp#L153).
+* **The Check**: Verify that when multiple clients send commands simultaneously and one client abruptly quits, the other clients' commands are still fully processed in the same loop cycle. Our implementation handles this post-loop in [`Server::run()`](../src/Server.cpp#L153).
 
 ### 2. IRC Case-Mapping Case-Insensitivity Check
 IRC nicknames are case-insensitive. More importantly, they follow the RFC 2812 case-mapping where `{}|^` are lowercase equivalents of `[]\~`.
