@@ -17,7 +17,7 @@ This lesson catalogs the critical bugs encountered during the development and in
 ## Bug 1: Makefile Rebuild Safety (Implicit Header Dependencies)
 
 ### 1. The Problem
-Initially, the [Makefile](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/Makefile) only tracked changes to `.cpp` source files. If a developer modified a header file (e.g. adding a new field to `Client.hpp` or updating `Server.hpp`), `make` would report `make: 'ircserv' is up to date` instead of re-compiling. Developers had to run `make re` manually, leading to compiled objects mismatching class layout definitions and causing runtime segment faults.
+Initially, the [Makefile](../../Makefile) only tracked changes to `.cpp` source files. If a developer modified a header file (e.g. adding a new field to `Client.hpp` or updating `Server.hpp`), `make` would report `make: 'ircserv' is up to date` instead of re-compiling. Developers had to run `make re` manually, leading to compiled objects mismatching class layout definitions and causing runtime segment faults.
 
 ### 2. The Solution
 We added compiler flags `-MMD -MP` to automatically generate dependency file lists (`.d` files) tracking all included headers for each translation unit, and included them via `-include` in the Makefile.
