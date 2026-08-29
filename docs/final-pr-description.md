@@ -12,8 +12,8 @@ This Pull Request connects all development dots, integrating the final networkin
 * **Multiplexing:** Single event loop monitoring both `POLLIN` (incoming connections/data) and `POLLOUT` (outgoing writable buffers) for all file descriptors.
 
 ### 2. Stream Reassembly & Buffer Layer
-* **Fragmented TCP Input:** [`BufferManager`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/src/BufferManager.cpp) holds partially read bytes and aggregates them in client buffers, only flushing complete lines delimited by `\r\n` to the parser.
-* **Non-Blocking Send Queue:** To avoid server hangs on slow clients, [`Server::sendToClient()`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/src/Server.cpp#L752) queues outgoing bytes in [`_outgoingBuffers`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/includes/Server.hpp#L137) and sets the `POLLOUT` monitoring bit. Data is flushed asynchronously without server blocks.
+* **Fragmented TCP Input:** [`BufferManager`](../src/BufferManager.cpp) holds partially read bytes and aggregates them in client buffers, only flushing complete lines delimited by `\r\n` to the parser.
+* **Non-Blocking Send Queue:** To avoid server hangs on slow clients, [`Server::sendToClient()`](../src/Server.cpp#L752) queues outgoing bytes in [`_outgoingBuffers`](../includes/Server.hpp#L137) and sets the `POLLOUT` monitoring bit. Data is flushed asynchronously without server blocks.
 
 ### 3. Protocol Parsing & Dispatching
 * **IRC Commands Parsing:** Parses commands (case-insensitive command strings, parameter vectors, and `:` trailing parameters).
