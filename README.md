@@ -56,9 +56,9 @@ L'server structure follow-ya strictly l'Orthodox Canonical Form (OCF) w separati
                     └──► _flushOutgoingData() ──► non-blocking send() from write queue
 ```
 
-* **Data Layer:** Managed by [`Client`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/includes/Client.hpp) w [`Channel`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/includes/Channel.hpp). Channels keep operator lists w invite entries.
-* **Networking Layer:** Managed in [`Server.cpp`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/src/Server.cpp) using a single `poll()` call.
-* **Control Layer:** Managed in [`CommandDispatcher.cpp`](file:///home/souhail/Desktop/Desktop/cercle_dzab/shared_irc/src/CommandDispatcher.cpp) for routing and executing standard IRC commands.
+* **Data Layer:** Managed by [`Client`](includes/Client.hpp) w [`Channel`](includes/Channel.hpp). Channels keep operator lists w invite entries.
+* **Networking Layer:** Managed in [`Server.cpp`](src/Server.cpp) using a single `poll()` call.
+* **Control Layer:** Managed in [`CommandDispatcher.cpp`](src/CommandDispatcher.cpp) for routing and executing standard IRC commands.
 
 ---
 
