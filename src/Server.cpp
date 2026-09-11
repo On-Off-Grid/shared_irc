@@ -243,18 +243,11 @@ void	Server::_configureSocket()
 void	Server::_setNonBlocking()
 {
 	std::cout << "Enabling non-blocking mode..." << std::endl;
-	int flags = fcntl(_serverFd, F_GETFL, 0);
-	if (flags == -1)
+	if (fcntl(_serverFd, F_SETFL, O_NONBLOCK) == -1)
 	{
 		close(_serverFd);
 		_serverFd = -1;
-		throw std::runtime_error(std::string("fcntl(F_GETFL) failed: ") + strerror(errno));
-	}
-	if (fcntl(_serverFd, F_SETFL, flags | O_NONBLOCK) == -1)
-	{
-		close(_serverFd);
-		_serverFd = -1;
-		throw std::runtime_error(std::string("fcntl(F_SETFL) failed: ") + strerror(errno));
+		throw std::runtime_error(std::string("fcntl(F_SETFL, O_NONBLOCK) failed: ") + strerror(errno));
 	}
 	std::cout << "Socket set to non-blocking." << std::endl;
 }
@@ -655,17 +648,9 @@ void	Server::_setPollOut(int fd, bool enabled)
  */
 bool	Server::_setSocketNonBlocking(int fd)
 {
-	int flags = fcntl(fd, F_GETFL, 0);
-	if (flags == -1)
+	if (fcntl(fd, F_SETFL, O_NONBLOCK) == -1)
 	{
-		std::cerr << "fcntl(F_GETFL) failed on fd " << fd << ": "
-				  << strerror(errno) << std::endl;
-		close(fd);
-		return false;
-	}
-	if (fcntl(fd, F_SETFL, flags | O_NONBLOCK) == -1)
-	{
-		std::cerr << "fcntl(F_SETFL) failed on fd " << fd << ": "
+		std::cerr << "fcntl(F_SETFL, O_NONBLOCK) failed on fd " << fd << ": "
 				  << strerror(errno) << std::endl;
 		close(fd);
 		return false;
